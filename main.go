@@ -5,12 +5,14 @@ import (
 	"crypto/md5"
 	"fmt"
 	"github.com/galdor/go-cmdline"
+	"github.com/mmcdole/gofeed"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 )
@@ -59,7 +61,7 @@ func downloadFile(line string) (base string, tempfn string, isTemp bool, err err
 		log.Info("Base file does not exist for url: ", line, "; creating")
 		io.Copy(fw, r.Body)
 	} else {
-		// file exists
+		// base file exists; write to temp
 		isTemp = true
 		var tmp *os.File
 		tmp, err = ioutil.TempFile("", url.Hostname())
@@ -75,6 +77,62 @@ func downloadFile(line string) (base string, tempfn string, isTemp bool, err err
 	return
 }
 
+func getTransformFile(line string) (string, error) {
+	url, err := url.Parse(line)
+	if err != nil {
+		log.Errorf("Unable to parse url %v\n", err)
+		return "", err
+	}
+	exePath, _ := os.Executable()
+	exeFolder := filepath.Dir(exePath)
+	xsltPath := filepath.Join(exeFolder, "assets", url.Hostname()+".xslt")
+	if _, err := os.Stat(xsltPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("xslt %s does not exist", xsltPath)
+	}
+	return xsltPath, nil
+}
+
+func CopyFile(src, dst string) {
+	from, err := os.Open(src)
+	if err != nil {
+		log.Errorf("Unable to open source file %s, %v", src, err)
+	}
+	defer from.Close()
+
+	to, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		log.Errorf("Unable to open destination file %s, %v", dst, err)
+	}
+	defer to.Close()
+
+	_, err = io.Copy(to, from)
+	if err != nil {
+		log.Errorf("Error while copying file %s -> %s, %v", src, dst, err)
+	}
+}
+func compareFeeds(xslt, base, temp string) []*gofeed.Item {
+	defer os.Remove(temp)
+	log.Debugf("applying xslt %s to new file %s with base %s", xslt, temp, base)
+	cmd := exec.Command("xsltproc", "--stringparam", "originalfile", base, xslt, temp)
+	cmdStdoutPipe, _ := cmd.StdoutPipe()
+	cmd.Start()
+	diff, err := ioutil.ReadAll(cmdStdoutPipe)
+	cmd.Wait()
+	if err != nil {
+		log.Errorf("Error applying xslt: %v\n", err)
+		return nil
+	}
+	feedparser := gofeed.NewParser()
+	feed, err := feedparser.ParseString(string(diff))
+	if err != nil {
+		log.Errorf("Could not parse feed, %v", err)
+		return nil
+	}
+	if len(feed.Items) > 0 {
+		CopyFile(temp, base)
+	}
+	return feed.Items
+}
 func processFile(fn string) error {
 	log.Debug("Processing file: ", fn)
 
@@ -103,7 +161,28 @@ func processFile(fn string) error {
 			log.Error("Error downloading line from file ", line)
 		}
 		// process the delta here
-		log.Info("File downloaded", basefile, tmpfile, isTemp)
+		log.Infof("File downloaded %s, %s, %b", basefile, tmpfile, isTemp)
+		if !isTemp {
+			log.Infof("Send push notification to acknowledge new feed url %s", line)
+
+		} else {
+			// compare temp with base
+			// if new items found
+			//		send pushes
+			//		replace base with temp
+			// else
+			//		delete temp
+			xslt, err := getTransformFile(line)
+			if err != nil {
+
+			}
+			newItems := compareFeeds(xslt, basefile, tmpfile)
+			if len(newItems) > 0 {
+				//push
+			} else {
+				log.Infof("No new items found in feed %s", line)
+			}
+		}
 
 	}
 }
