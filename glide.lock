@@ -1,0 +1,56 @@
+hash: 1e9e970c14596e8b077b352b6a6bd172d3a819be89db29f6ec0dc195d89485f6
+updated: 2017-12-11T12:35:45.6441909+05:30
+imports:
+- name: github.com/andybalholm/cascadia
+  version: 349dd0209470eabd9514242c688c403c0926d266
+- name: github.com/galdor/go-cmdline
+  version: 13667367d5986f5f39e27ef8f43119e490696511
+- name: github.com/howeyc/fsnotify
+  version: 441bbc86b167f3c1f4786afae9931403b99fdacf
+- name: github.com/mmcdole/gofeed
+  version: 303223474e837398b2f8a265e5572958bb5568c0
+  subpackages:
+  - atom
+  - extensions
+  - internal/shared
+  - rss
+- name: github.com/mmcdole/goxpp
+  version: 77e4a51a73ed99ee3f33c1474dc166866304acbd
+- name: github.com/PuerkitoBio/goquery
+  version: bc4e06eb0792d1a14661d19dd7822163c25bb6bd
+- name: github.com/sirupsen/logrus
+  version: d682213848ed68c0a260ca37d6dd5ace8423f5ba
+- name: golang.org/x/crypto
+  version: 9419663f5a44be8b34ca85f08abc5fe1be11f8a3
+  subpackages:
+  - ssh/terminal
+- name: golang.org/x/net
+  version: a04bdaca5b32abe1c069418fb7088ae607de5bd0
+  subpackages:
+  - html
+  - html/atom
+  - html/charset
+- name: golang.org/x/sys
+  version: 43eea11bc92608addb41b8a406b0407495c106f6
+  subpackages:
+  - unix
+  - windows
+- name: golang.org/x/text
+  version: 825fc78a2fd6fa0a5447e300189e3219e05e1f25
+  subpackages:
+  - encoding
+  - encoding/charmap
+  - encoding/htmlindex
+  - encoding/internal
+  - encoding/internal/identifier
+  - encoding/japanese
+  - encoding/korean
+  - encoding/simplifiedchinese
+  - encoding/traditionalchinese
+  - encoding/unicode
+  - internal/tag
+  - internal/utf8internal
+  - language
+  - runes
+  - transform
+testImports: []
