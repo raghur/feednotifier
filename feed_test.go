@@ -8,7 +8,7 @@ import (
 )
 
 func TestFeedParseBasic(t *testing.T) {
-	file, _ := os.Open("test/first.xml")
+	file, _ := os.Open("test/third.xml")
 	defer file.Close()
 	fp := gofeed.NewParser()
 	feed, e := fp.Parse(file)
@@ -23,7 +23,7 @@ func TestFeedParseBasic(t *testing.T) {
 		fmt.Println(e.GUID)
 		fmt.Println(e.Link)
 		fmt.Println(e.Published)
-		fmt.Println(e.PublishedParsed)
+		// fmt.Println(e.PublishedParsed)
 		fmt.Println(e.Content)
 		for k, v := range e.Custom {
 			fmt.Println(k, v)
