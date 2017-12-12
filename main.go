@@ -235,13 +235,34 @@ func processFile(fn string) error {
 				continue
 			}
 			if len(newItems) > 0 {
-				//push
+				for _, item := range newItems {
+					sendPush(item)
+				}
 			} else {
 				log.Infof("No new items found in feed %s", line)
 			}
 		}
 
 	}
+}
+
+func sendPush(item *gofeed.Item) {
+	data := make(url.Values)
+	token:= strings.Split(pushoverToken, ":")
+	data["token"] = []string{token[0]}
+	data["user"] = []string{token[1]}
+	data["title"] = []string{item.Title}
+	data["url"] = []string{item.Link}
+	data["url_title"] = []string{"Add this torrent"}
+	data["message"] = []string{item.Description}
+
+	resp, err := http.PostForm("https://api.pushover.net/1/messages.json", data)
+	if err != nil {
+		log.Errorf("Error sending push notification %v", err)
+	}
+	defer resp.Body.Close()
+	responseContent, _ := ioutil.ReadAll(bufio.NewReader(resp.Body))
+	log.Debugf("Pushed %s - response: %s", item.Title, responseContent)
 }
 func initFileWatchers(files []string) {
 	log.Debug("watching files: ", files)
@@ -252,6 +273,7 @@ func initFileWatchers(files []string) {
 }
 
 var workingDirectory string
+var pushoverToken string
 
 func main() {
 
@@ -265,11 +287,13 @@ func main() {
 	cmdline.SetOptionDefault("loglevel", "warn")
 	cmdline.AddOption("f", "log-file", "file", "log file")
 	cmdline.SetOptionDefault("log-file", filepath.Join(path, "log.txt"))
+	cmdline.AddOption("t", "token", "pushover token app:user", "pushover token")
 	cmdline.AddTrailingArguments("watchfile", "files to watch and read rss feed urls from")
 	cmdline.Parse(os.Args)
 	initLog(cmdline)
 	log.Info("Starting process")
 	workingDirectory = cmdline.OptionValue("workingdir")
+	pushoverToken = cmdline.OptionValue("token")
 	initFileWatchers(cmdline.TrailingArgumentsValues("watchfile"))
 	<-gocron.Start()
 	log.Info("Completed process")
