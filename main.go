@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"strconv"
 )
 
 func initLog(cmdline *cmdline.CmdLine) {
@@ -268,12 +269,13 @@ func initFileWatchers(files []string) {
 	log.Debug("watching files: ", files)
 	for _, file := range files {
 		processFile(file)
-		gocron.Every(10).Minutes().Do(processFile, file)
+		gocron.Every(interval).Minutes().Do(processFile, file)
 	}
 }
 
 var workingDirectory string
 var pushoverToken string
+var interval uint64
 
 func main() {
 
@@ -288,12 +290,16 @@ func main() {
 	cmdline.AddOption("f", "log-file", "file", "log file")
 	cmdline.SetOptionDefault("log-file", filepath.Join(path, "log.txt"))
 	cmdline.AddOption("t", "token", "pushover token app:user", "pushover token")
+	cmdline.AddOption("i", "interval", "in minutes", "feeds will be checked at every X minutes")
+	cmdline.SetOptionDefault("interval", "30")
 	cmdline.AddTrailingArguments("watchfile", "files to watch and read rss feed urls from")
 	cmdline.Parse(os.Args)
 	initLog(cmdline)
 	log.Info("Starting process")
 	workingDirectory = cmdline.OptionValue("workingdir")
 	pushoverToken = cmdline.OptionValue("token")
+	interval, _ = strconv.ParseUint(cmdline.OptionValue("interval"), 10, 64)
+	log.Infof("Feeds will be checked at intervals of %d minutes", interval)
 	initFileWatchers(cmdline.TrailingArgumentsValues("watchfile"))
 	<-gocron.Start()
 	log.Info("Completed process")
