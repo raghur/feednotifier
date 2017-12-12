@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"github.com/galdor/go-cmdline"
 	"github.com/mmcdole/gofeed"
+	"github.com/jasonlvhit/gocron"
 	log "github.com/sirupsen/logrus"
 	"io"
+	"time"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -18,6 +20,10 @@ import (
 )
 
 func initLog(cmdline *cmdline.CmdLine) {
+	formatter := &log.TextFormatter{
+		FullTimestamp: true,
+	}
+	log.SetFormatter(formatter)
 	level, e := log.ParseLevel(cmdline.OptionValue("loglevel"))
 	if e != nil {
 		log.Panicf("Could not parse log level, exiting %v", e)
@@ -45,20 +51,28 @@ func downloadFile(line string) (base string, tempfn string, isTemp bool, err err
 		return
 	}
 	defer r.Body.Close()
+	if r.StatusCode != 200 {
+		log.Errorf("Error downloading from url %s, status code: %d", url, r.StatusCode)
+		resp, _ := ioutil.ReadAll(bufio.NewReader(r.Body))
+		err = fmt.Errorf("Got non 200 response for feed %s: %s", r.Status, resp)
+		return
+	}
 	md5hash := md5.Sum([]byte(line))
 	filename := fmt.Sprintf("%x", md5hash)
 	base = filepath.Join(workingDirectory, url.Hostname(), filename)
-	log.Info("Path for url:", line, ":", base)
+	log.Infof("Path for url: %s =  %s", line,  base)
 	// file not exists
 	isTemp = false
 	if _, err = os.Stat(base); os.IsNotExist(err) {
 		os.MkdirAll(filepath.Dir(base), os.ModePerm)
-		fw, err := os.Create(base)
+		var fw *os.File
+		fw, err = os.Create(base)
 		if err != nil {
 			log.Errorf("Unable to create file %v\n", err)
+			return
 		}
 		defer fw.Close()
-		log.Info("Base file does not exist for url: ", line, "; creating")
+		log.Info("Base file does not exist for url: ", line, "; creating", base)
 		io.Copy(fw, r.Body)
 	} else {
 		// base file exists; write to temp
@@ -135,7 +149,6 @@ func compareFeeds(xslt, base, temp string) []*gofeed.Item {
 }
 func processFile(fn string) error {
 	log.Debug("Processing file: ", fn)
-
 	file, err := os.Open(fn)
 	defer file.Close()
 
@@ -151,14 +164,19 @@ func processFile(fn string) error {
 	for {
 		line, err = reader.ReadString('\n')
 		if err == io.EOF {
+			_, time := gocron.NextRun()
+			log.Infof("Next run at : %v", time)
 			return nil
 		}
 		if err != nil {
 			log.Error("Error reading line from file ", file)
+			continue
 		}
+		time.Sleep(2*time.Minute)
 		basefile, tmpfile, isTemp, err := downloadFile(line)
 		if err != nil {
-			log.Error("Error downloading line from file ", line)
+			log.Errorf("Error downloading: %s, %v", line, err)
+			continue
 		}
 		// process the delta here
 		log.Infof("File downloaded %s, %s, %b", basefile, tmpfile, isTemp)
@@ -169,9 +187,6 @@ func processFile(fn string) error {
 			// compare temp with base
 			// if new items found
 			//		send pushes
-			//		replace base with temp
-			// else
-			//		delete temp
 			xslt, err := getTransformFile(line)
 			if err != nil {
 
@@ -189,7 +204,8 @@ func processFile(fn string) error {
 func initFileWatchers(files []string) {
 	log.Debug("watching files: ", files)
 	for _, file := range files {
-		processFile(file)
+		// processFile(file)
+		gocron.Every(10).Minutes().Do(processFile, file)
 	}
 }
 
@@ -213,22 +229,6 @@ func main() {
 	log.Info("Starting process")
 	workingDirectory = cmdline.OptionValue("workingdir")
 	initFileWatchers(cmdline.TrailingArgumentsValues("watchfile"))
+	<-gocron.Start()
 	log.Info("Completed process")
-	// fp := gofeed.NewParser()
-	// feed, e := fp.ParseURL("https://www.skytorrents.in/rss/all/ad/1/blue%20planet%20II%20%20hevc%201080p%20psa")
-	// if e != nil {
-	// 	fmt.Println(e)
-	// 	os.Exit(1)
-	// }
-	// fmt.Println(feed.Title)
-	// log.Debug("Feed items: ", len(feed.Items))
-	// for _, e := range feed.Items {
-	// 	fmt.Println(e.Title)
-	// 	fmt.Println(e.GUID)
-	// 	fmt.Println(e.Link)
-	// 	// fmt.Println(e.Content)
-	// 	// for k, v := range e.Custom {
-	// 	// 	fmt.Println(k, v)
-	// 	// }
-	// }
 }

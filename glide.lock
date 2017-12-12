@@ -1,12 +1,16 @@
-hash: 1e9e970c14596e8b077b352b6a6bd172d3a819be89db29f6ec0dc195d89485f6
-updated: 2017-12-11T12:35:45.6441909+05:30
+hash: 46d191fecb343256666dfe33190350b342068da85e0354dd03b26a698973a632
+updated: 2017-12-12T10:35:57.2119687+05:30
 imports:
 - name: github.com/andybalholm/cascadia
   version: 349dd0209470eabd9514242c688c403c0926d266
+- name: github.com/fsnotify/fsnotify
+  version: 629574ca2a5df945712d3079857300b5e4da0236
 - name: github.com/galdor/go-cmdline
   version: 13667367d5986f5f39e27ef8f43119e490696511
 - name: github.com/howeyc/fsnotify
   version: 441bbc86b167f3c1f4786afae9931403b99fdacf
+- name: github.com/jasonlvhit/gocron
+  version: 42a5804d37aa0b9239b265e894a16b8edbf52d54
 - name: github.com/mmcdole/gofeed
   version: 303223474e837398b2f8a265e5572958bb5568c0
   subpackages:
