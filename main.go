@@ -17,6 +17,8 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 func initLog(cmdline *cmdline.CmdLine) {
@@ -38,7 +40,12 @@ func initLog(cmdline *cmdline.CmdLine) {
 	}
 	log.SetOutput(logfile)
 }
-
+type ratelimitError struct {
+	retryDuration time.Duration
+}
+func (e *ratelimitError) Error() string {
+	return fmt.Sprintf("Rate limited - retry after %v", e.retryDuration)
+}
 func downloadFile(line string) (base string, tempfn string, isTemp bool, err error) {
 	url, err := url.Parse(line)
 	if err != nil {
@@ -52,6 +59,12 @@ func downloadFile(line string) (base string, tempfn string, isTemp bool, err err
 	}
 	defer r.Body.Close()
 	if r.StatusCode != 200 {
+		if r.StatusCode == 429 {
+			retry := r.Header.Get("X-Ratelimit-Retryafter")
+			duration, _ := time.ParseDuration(retry)
+			err = &ratelimitError{duration}
+			return 
+		}
 		log.Errorf("Error downloading from url %s, status code: %d", url, r.StatusCode)
 		resp, _ := ioutil.ReadAll(bufio.NewReader(r.Body))
 		err = fmt.Errorf("Got non 200 response for feed %s: %s", r.Status, resp)
@@ -108,6 +121,7 @@ func getTransformFile(line string) (string, error) {
 
 func CopyFile(src, dst string) {
 	from, err := os.Open(src)
+	log.Infof("Copying from src:%s to dest: %s", src, dst)
 	if err != nil {
 		log.Errorf("Unable to open source file %s, %v", src, err)
 	}
@@ -124,28 +138,39 @@ func CopyFile(src, dst string) {
 		log.Errorf("Error while copying file %s -> %s, %v", src, dst, err)
 	}
 }
-func compareFeeds(xslt, base, temp string) []*gofeed.Item {
+func compareFeeds(xslt, base, temp string) ([]*gofeed.Item, error) {
 	defer os.Remove(temp)
-	log.Debugf("applying xslt %s to new file %s with base %s", xslt, temp, base)
-	cmd := exec.Command("xsltproc", "--stringparam", "originalfile", base, xslt, temp)
+	baseXSLTParam :=base
+	if runtime.GOOS == "windows" {
+		// xsltproc idiosyncracy on windows
+		baseXSLTParam = strings.Replace(base, "\\", "/", -1)
+	}
+	log.Debugf("applying xslt %s to new file %s with base %s", xslt, temp, baseXSLTParam)
+	cmd := exec.Command("xsltproc", "--stringparam", "originalfile", baseXSLTParam, xslt, temp)
 	cmdStdoutPipe, _ := cmd.StdoutPipe()
+	cmdStdErrPipe, _ := cmd.StderrPipe()
 	cmd.Start()
 	diff, err := ioutil.ReadAll(cmdStdoutPipe)
+	stderr, err:= ioutil.ReadAll(cmdStdErrPipe)
 	cmd.Wait()
 	if err != nil {
 		log.Errorf("Error applying xslt: %v\n", err)
-		return nil
+		return nil, err
+	}
+	if string(stderr) != "" {
+		log.Warningf("xsltproc stderr: %s", stderr)
 	}
 	feedparser := gofeed.NewParser()
 	feed, err := feedparser.ParseString(string(diff))
 	if err != nil {
 		log.Errorf("Could not parse feed, %v", err)
-		return nil
+		return nil, err
 	}
 	if len(feed.Items) > 0 {
+		log.Infof("Feed diff has %d new items", len(feed.Items))
 		CopyFile(temp, base)
-	}
-	return feed.Items
+	} 
+	return feed.Items, nil
 }
 func processFile(fn string) error {
 	log.Debug("Processing file: ", fn)
@@ -164,16 +189,29 @@ func processFile(fn string) error {
 	for {
 		line, err = reader.ReadString('\n')
 		if err == io.EOF {
-			_, time := gocron.NextRun()
-			log.Infof("Next run at : %v", time)
+			log.Infof("Completed processing file %s", fn)
 			return nil
 		}
 		if err != nil {
-			log.Error("Error reading line from file ", file)
+			log.Error("Error reading line from file ", fn)
 			continue
 		}
-		time.Sleep(2*time.Minute)
-		basefile, tmpfile, isTemp, err := downloadFile(line)
+		success := false
+		retries := 0
+		var basefile, tmpfile string
+		var isTemp bool
+		var err error
+		for !success && retries < 3 {
+			basefile, tmpfile, isTemp, err = downloadFile(line)
+			if err == nil {
+				success = true
+			}
+			if re, ok := err.(*ratelimitError); ok {
+				log.Infof("Rate limited for %s - retrying after: %v at %v", line, re.retryDuration, time.Now().Add(re.retryDuration))
+				retries++
+				time.Sleep(re.retryDuration)
+			}
+		}
 		if err != nil {
 			log.Errorf("Error downloading: %s, %v", line, err)
 			continue
@@ -191,7 +229,11 @@ func processFile(fn string) error {
 			if err != nil {
 
 			}
-			newItems := compareFeeds(xslt, basefile, tmpfile)
+			newItems, err := compareFeeds(xslt, basefile, tmpfile)
+			if err != nil {
+				log.Errorf("Error comparing feeds with xslt: %v", err)
+				continue
+			}
 			if len(newItems) > 0 {
 				//push
 			} else {
@@ -204,7 +246,7 @@ func processFile(fn string) error {
 func initFileWatchers(files []string) {
 	log.Debug("watching files: ", files)
 	for _, file := range files {
-		// processFile(file)
+		processFile(file)
 		gocron.Every(10).Minutes().Do(processFile, file)
 	}
 }
