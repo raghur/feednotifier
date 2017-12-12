@@ -1,12 +1,19 @@
 package main
 
 import (
+	"fmt"
+	"time"
 	"github.com/fsnotify/fsnotify"
 	"os"
 	"testing"
 	log "github.com/sirupsen/logrus"
 )
 
+func TestParseDuration(t *testing.T) {
+	durationStr := "1m13.619259473s"
+	d,_ := time.ParseDuration(durationStr)
+	fmt.Printf("duration parsed as %v\n", d)
+}
 func TestFsNotifyDir(t *testing.T) {
 	os.Mkdir("fsnotify", os.ModeDir)
 	defer os.Remove("fsnotify")
