@@ -38,3 +38,16 @@ func TestFileReaderEmptyFile(t *testing.T) {
 		t.Fail()
 	}
 }
+func TestFileReaderNonBlankLastLine(t *testing.T) {
+	count := 0
+	err := ReadLines("test/filewithnonblanklastline", " \r\n", func(l string) error {
+		count++
+		return nil
+	})
+	if err != nil {
+		t.Fail()
+	}
+	if count != 4 {
+		t.Fail()
+	}
+}
