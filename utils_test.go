@@ -24,3 +24,17 @@ func TestFileReaderInvalidFile(t *testing.T) {
 		t.Fail()
 	}
 }
+func TestFileReaderEmptyFile(t *testing.T) {
+	count := 0
+	err := ReadLines("test/empty", " \r\n", func(l string) error {
+		count++
+		t.Fail()
+		return nil
+	})
+	if err != nil {
+		t.Fail()
+	}
+	if count > 0 {
+		t.Fail()
+	}
+}
