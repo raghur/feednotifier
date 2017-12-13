@@ -75,6 +75,6 @@ func initLog(levelname, logfilename string) {
 	if e != nil {
 		log.Panicf("Unable to open log file, bailing %v", e)
 	}
-	log.Info("Log level set to: ", level)
 	log.SetOutput(logfile)
+	log.Info("Log level set to: ", level)
 }
