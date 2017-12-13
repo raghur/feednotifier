@@ -81,12 +81,14 @@ func (mf *MonitoredFile) initFile() error {
 			log.Error("Error reading line from file ", mf.filename)
 			continue
 		}
-		line = strings.Trim(line, "\r\n")
-		url, _ := url.Parse(line)
-		md5hash := md5.Sum([]byte(line))
-		filename := fmt.Sprintf("%x", md5hash)
-		base := filepath.Join(workingDirectory, url.Hostname(), filename)
-		mf.urls[line] = FeedUrl{url: line, savePath: base, added: time}
+		line = strings.Trim(line, " \r\n")
+		if line != "" {
+			url, _ := url.Parse(line)
+			md5hash := md5.Sum([]byte(line))
+			filename := fmt.Sprintf("%x", md5hash)
+			base := filepath.Join(workingDirectory, url.Hostname(), filename)
+			mf.urls[line] = FeedUrl{url: line, savePath: base, added: time}
+		}
 	}
 	log.Debugf("Checking to see if there are any old urls to be cleaned")
 	for k, v := range mf.urls {
@@ -102,33 +104,49 @@ func (mf *MonitoredFile) initFile() error {
 }
 
 func (mf *MonitoredFile) Start() {
-	mf.watcher.Add(mf.filename)
-	debounceDuration := 1 * time.Second
-	go func() {
-		lastTriggered := time.Now()
-		for {
-			select {
-			case event := <-mf.watcher.Events:
-				log.Println("event:", event)
-				if event.Op&fsnotify.Write == fsnotify.Write && time.Now().Sub(lastTriggered) > debounceDuration {
-					log.Debug("modified file:", event.Name)
-					lastTriggered = time.Now()
-					mf.initFile()
-				}
-			case err := <-mf.watcher.Errors:
-				log.Debug("error while watching file:", err)
-			}
-		}
-	}()
-	mf.processFile()
-	gocron.Every(mf.interval).Minutes().Do(func(f *MonitoredFile) {
+	job := func(f *MonitoredFile) {
 		nextRun := time.Now().Add(time.Duration(f.interval) * time.Minute)
 		log.Debug("Starting scheduled run: ")
 		f.processFile()
 		log.Debugf("Completed scheduled run: Sleeping for %d minutes.", f.interval)
 		log.Debugf("Next run at %v", nextRun)
 		log.Info("*************************************")
-	}, mf)
+	}
+	cleanup := func() {
+		log.Debugf("Removing scheduled task ")
+		gocron.Remove(job)
+		log.Debugf("Closing fs watcher")
+		mf.watcher.Close()
+	}
+
+	mf.watcher.Add(mf.filename)
+	debounceDuration := 1 * time.Second
+	go func() {
+		lastTriggered := time.Now()
+		log.Debug("IN for loop waiting on channel event")
+		for {
+			select {
+			case event := <-mf.watcher.Events:
+				log.Println("event:", event)
+				if time.Now().Sub(lastTriggered) > debounceDuration {
+					log.Debug("modified file:", event.Name)
+					lastTriggered = time.Now()
+					time.AfterFunc(500*time.Millisecond, func() {
+						err := mf.initFile()
+						if err != nil {
+							log.Errorf("file %s could not be read. Error %v", mf.filename, err)
+						}
+					})
+				}
+			case err := <-mf.watcher.Errors:
+				log.Debug("error while watching file:", err)
+				break
+			}
+		}
+		cleanup()
+	}()
+	mf.processFile()
+	gocron.Every(mf.interval).Minutes().Do(job, mf)
 }
 
 func (mf *MonitoredFile) Stop() {
