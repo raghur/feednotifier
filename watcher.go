@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/md5"
 	"fmt"
+	"github.com/fsnotify/fsnotify"
 	"github.com/jasonlvhit/gocron"
 	"github.com/mmcdole/gofeed"
 	log "github.com/sirupsen/logrus"
@@ -27,22 +28,107 @@ func (e *ratelimitError) Error() string {
 	return fmt.Sprintf("Rate limited - retry after %v", e.retryDuration)
 }
 
+type FeedUrl struct {
+	url      string
+	savePath string
+	added    time.Time
+}
+
+func (f FeedUrl) String() string {
+	return fmt.Sprintf("%s", f.savePath)
+}
+
 type MonitoredFile struct {
 	filename string
-	urls     []string
+	urls     map[string]FeedUrl
 	interval uint64
+	watcher  *fsnotify.Watcher
 }
 
 func New(filename string, interval uint64) *MonitoredFile {
 	var mf MonitoredFile
 	mf.filename = filename
 	mf.interval = interval
+	mf.urls = make(map[string]FeedUrl)
+	mf.watcher, _ = fsnotify.NewWatcher()
+	mf.initFile()
 	return &mf
 }
 
+func (mf *MonitoredFile) initFile() error {
+
+	time := time.Now()
+	log.Debug("Loading file: ", mf.filename)
+	file, err := os.Open(mf.filename)
+	defer file.Close()
+
+	if err != nil {
+		log.Errorf("error opening file %v\n", err)
+		return err
+	}
+
+	// Start reading from the file with a reader.
+	reader := bufio.NewReader(file)
+
+	var line string
+	for {
+		line, err = reader.ReadString('\n')
+		if err == io.EOF {
+			log.Infof("Completed reading file %s", mf.filename)
+			break
+		}
+		if err != nil {
+			log.Error("Error reading line from file ", mf.filename)
+			continue
+		}
+		line = strings.Trim(line, "\r\n")
+		url, _ := url.Parse(line)
+		md5hash := md5.Sum([]byte(line))
+		filename := fmt.Sprintf("%x", md5hash)
+		base := filepath.Join(workingDirectory, url.Hostname(), filename)
+		mf.urls[line] = FeedUrl{url: line, savePath: base, added: time}
+	}
+	log.Debugf("Checking to see if there are any old urls to be cleaned")
+	for k, v := range mf.urls {
+		if v.added.Before(time) {
+			log.Debugf("Url %s not added now - will be deleted", k)
+			os.Remove(v.savePath)
+			log.Debugf("Removed file: %s", v.savePath)
+			delete(mf.urls, k)
+		}
+	}
+	log.Debugf("Final list of %d urls to be monitored: %v", len(mf.urls), mf.urls)
+	return nil
+}
+
 func (mf *MonitoredFile) Start() {
-	processFile(mf.filename)
-	gocron.Every(mf.interval).Minutes().Do(processFile, mf.filename)
+	mf.watcher.Add(mf.filename)
+	debounceDuration := 1 * time.Second
+	go func() {
+		lastTriggered := time.Now()
+		for {
+			select {
+			case event := <-mf.watcher.Events:
+				log.Println("event:", event)
+				if event.Op&fsnotify.Write == fsnotify.Write && time.Now().Sub(lastTriggered) > debounceDuration {
+					log.Debug("modified file:", event.Name)
+					lastTriggered = time.Now()
+					mf.initFile()
+				}
+			case err := <-mf.watcher.Errors:
+				log.Debug("error while watching file:", err)
+			}
+		}
+	}()
+	mf.processFile()
+	gocron.Every(mf.interval).Minutes().Do(func(f *MonitoredFile) {
+		nextRun := time.Now().Add(time.Duration(f.interval) * time.Minute)
+		log.Debug("Starting scheduled run: ")
+		f.processFile()
+		log.Debugf("Completed scheduled run: Sleeping for %d minutes.", f.interval)
+		log.Debugf("Next run at %v", nextRun)
+		log.Info("*************************************")
+	}, mf)
 }
 
 func (mf *MonitoredFile) Stop() {
@@ -53,7 +139,7 @@ func (mf *MonitoredFile) Delete() {
 
 }
 
-func downloadFile(line string) (base string, tempfn string, isTemp bool, err error) {
+func downloadFile(line, base string) (tempfn string, err error) {
 	url, err := url.Parse(line)
 	if err != nil {
 		log.Errorf("Unable to parse url %v\n", err)
@@ -77,12 +163,8 @@ func downloadFile(line string) (base string, tempfn string, isTemp bool, err err
 		err = fmt.Errorf("Got non 200 response for feed %s: %s", r.Status, resp)
 		return
 	}
-	md5hash := md5.Sum([]byte(line))
-	filename := fmt.Sprintf("%x", md5hash)
-	base = filepath.Join(workingDirectory, url.Hostname(), filename)
-	log.Infof("Path for url: %s =  %s", line, base)
 	// file not exists
-	isTemp = false
+	tempfn = ""
 	if _, err = os.Stat(base); os.IsNotExist(err) {
 		os.MkdirAll(filepath.Dir(base), os.ModePerm)
 		var fw *os.File
@@ -96,7 +178,6 @@ func downloadFile(line string) (base string, tempfn string, isTemp bool, err err
 		io.Copy(fw, r.Body)
 	} else {
 		// base file exists; write to temp
-		isTemp = true
 		var tmp *os.File
 		tmp, err = ioutil.TempFile("", url.Hostname())
 		if err != nil {
@@ -161,37 +242,14 @@ func getTransformFile(line string) (string, error) {
 	return xsltPath, nil
 }
 
-func processFile(fn string) error {
-	log.Debug("Processing file: ", fn)
-	file, err := os.Open(fn)
-	defer file.Close()
-
-	if err != nil {
-		log.Errorf("error opening file %v\n", err)
-		return err
-	}
-
-	// Start reading from the file with a reader.
-	reader := bufio.NewReader(file)
-
-	var line string
-	for {
-		line, err = reader.ReadString('\n')
-		if err == io.EOF {
-			log.Infof("Completed processing file %s", fn)
-			return nil
-		}
-		if err != nil {
-			log.Error("Error reading line from file ", fn)
-			continue
-		}
+func (mf *MonitoredFile) processFile() error {
+	for line, value := range mf.urls {
 		success := false
 		retries := 0
-		var basefile, tmpfile string
-		var isTemp bool
+		var tmpfile string
 		var err error
 		for !success && retries < 3 {
-			basefile, tmpfile, isTemp, err = downloadFile(line)
+			tmpfile, err = downloadFile(line, value.savePath)
 			if err == nil {
 				success = true
 			}
@@ -206,8 +264,8 @@ func processFile(fn string) error {
 			continue
 		}
 		// process the delta here
-		log.Infof("File downloaded %s, %s, %b", basefile, tmpfile, isTemp)
-		if !isTemp {
+		log.Infof("File downloaded %s, %s", value.savePath, tmpfile)
+		if tmpfile == "" {
 			log.Infof("Send push notification to acknowledge new feed url %s", line)
 
 		} else {
@@ -218,7 +276,7 @@ func processFile(fn string) error {
 			if err != nil {
 
 			}
-			newItems, err := compareFeeds(xslt, basefile, tmpfile)
+			newItems, err := compareFeeds(xslt, value.savePath, tmpfile)
 			if err != nil {
 				log.Errorf("Error comparing feeds with xslt: %v", err)
 				continue
@@ -235,6 +293,7 @@ func processFile(fn string) error {
 		}
 
 	}
+	return nil
 }
 
 func copyFile(src, dst string) {
