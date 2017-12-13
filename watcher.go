@@ -45,7 +45,7 @@ type MonitoredFile struct {
 	watcher  *fsnotify.Watcher
 }
 
-func New(filename string, interval uint64) *MonitoredFile {
+func NewMonitoredFile(filename string, interval uint64) *MonitoredFile {
 	var mf MonitoredFile
 	mf.filename = filename
 	mf.interval = interval

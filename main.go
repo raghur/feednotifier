@@ -30,7 +30,7 @@ func main() {
 	files := cmdline.TrailingArgumentsValues("watchfile")
 	log.Debug("watching files: ", files)
 	for _, file := range files {
-		watcher := New(file, interval)
+		watcher := NewMonitoredFile(file, interval)
 		watcher.Start()
 	}
 	<-gocron.Start()
