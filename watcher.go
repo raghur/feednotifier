@@ -63,7 +63,11 @@ func (mf *MonitoredFile) initFile() error {
 			md5hash := md5.Sum([]byte(line))
 			filename := fmt.Sprintf("%x", md5hash)
 			base := filepath.Join(workingDirectory, url.Hostname(), filename)
+			_, exists := mf.urls[line]
 			mf.urls[line] = FeedUrl{url: line, savePath: base, added: time}
+			if !exists {
+				processLine(line, mf.urls[line])
+			}
 		}
 		return nil
 	})
@@ -141,7 +145,7 @@ func (mf *MonitoredFile) Start() {
 		}
 		cleanup()
 	}()
-	mf.processFile()
+	// mf.processFile()
 	gocron.Every(mf.interval).Minutes().Do(job, mf)
 }
 
@@ -256,58 +260,62 @@ func getTransformFile(line string) (string, error) {
 	return xsltPath, nil
 }
 
-func (mf *MonitoredFile) processFile() error {
-	for line, value := range mf.urls {
-		success := false
-		retries := 0
-		var tmpfile string
-		var err error
-		for !success && retries < 3 {
-			tmpfile, err = downloadFile(line, value.savePath)
-			if err == nil {
-				success = true
-			}
-			if re, ok := err.(*ratelimitError); ok {
-				log.Infof("Rate limited for %s - retrying after: %v at %v", line, re.retryDuration, time.Now().Add(re.retryDuration))
-				retries++
-				time.Sleep(re.retryDuration)
-			}
+func processLine(line string, value FeedUrl) error {
+	success := false
+	retries := 0
+	var tmpfile string
+	var err error
+	for !success && retries < 3 {
+		tmpfile, err = downloadFile(line, value.savePath)
+		if err == nil {
+			success = true
 		}
+		if re, ok := err.(*ratelimitError); ok {
+			log.Infof("Rate limited for %s - retrying after: %v at %v", line, re.retryDuration, time.Now().Add(re.retryDuration))
+			retries++
+			time.Sleep(re.retryDuration)
+		}
+	}
+	if err != nil {
+		log.Errorf("Error downloading: %s, %v", line, err)
+		return nil
+	}
+	// process the delta here
+	log.Infof("File downloaded %s, %s", value.savePath, tmpfile)
+	if tmpfile == "" {
+		log.Infof("Send push notification to acknowledge new feed url %s", line)
+		for _, notifier := range notifiers {
+			notifier.Notify(fmt.Sprintf("New url %s monitored. Base file %s", line, value.savePath))
+		}
+	} else {
+		// compare temp with base
+		// if new items found
+		//		send pushes
+		xslt, err := getTransformFile(line)
 		if err != nil {
-			log.Errorf("Error downloading: %s, %v", line, err)
-			continue
+
 		}
-		// process the delta here
-		log.Infof("File downloaded %s, %s", value.savePath, tmpfile)
-		if tmpfile == "" {
-			log.Infof("Send push notification to acknowledge new feed url %s", line)
-			for _, notifier := range notifiers {
-				notifier.Notify(fmt.Sprintf("New url %s monitored. Base file %s", line, value.savePath))
+		newItems, err := compareFeeds(xslt, value.savePath, tmpfile)
+		if err != nil {
+			log.Errorf("Error comparing feeds with xslt: %v", err)
+			return nil
+		}
+		if len(newItems) > 0 {
+			for _, item := range newItems {
+				for _, notifier := range notifiers {
+					notifier.NotifyItem(item)
+				}
 			}
 		} else {
-			// compare temp with base
-			// if new items found
-			//		send pushes
-			xslt, err := getTransformFile(line)
-			if err != nil {
-
-			}
-			newItems, err := compareFeeds(xslt, value.savePath, tmpfile)
-			if err != nil {
-				log.Errorf("Error comparing feeds with xslt: %v", err)
-				continue
-			}
-			if len(newItems) > 0 {
-				for _, item := range newItems {
-					for _, notifier := range notifiers {
-						notifier.NotifyItem(item)
-					}
-				}
-			} else {
-				log.Infof("No new items found in feed %s", line)
-			}
+			log.Infof("No new items found in feed %s", line)
 		}
+	}
+	return nil
 
+}
+func (mf *MonitoredFile) processFile() error {
+	for line, value := range mf.urls {
+		processLine(line, value)
 	}
 	return nil
 }
