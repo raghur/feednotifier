@@ -118,8 +118,17 @@ func (mf *MonitoredFile) Start() {
 				if time.Now().Sub(lastTriggered) > debounceDuration {
 					log.Debug("modified file:", event.Name)
 					lastTriggered = time.Now()
+
+					// sometimes we get a remove event - though the file is being
+					// edited - for ex. with Vim. In those cases:
+					//	- initialize after a delay
+					//  - readd the watch
+					wasRemoveEvent := event.Op&fsnotify.Remove == fsnotify.Remove
 					time.AfterFunc(500*time.Millisecond, func() {
 						err := mf.initFile()
+						if wasRemoveEvent {
+							mf.watcher.Add(mf.filename)
+						}
 						if err != nil {
 							log.Errorf("file %s could not be read. Error %v", mf.filename, err)
 						}
