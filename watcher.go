@@ -285,7 +285,9 @@ func (mf *MonitoredFile) processFile() error {
 		log.Infof("File downloaded %s, %s", value.savePath, tmpfile)
 		if tmpfile == "" {
 			log.Infof("Send push notification to acknowledge new feed url %s", line)
-
+			for _, notifier := range notifiers {
+				notifier.Notify(fmt.Sprintf("New url %s monitored. Base file %s", line, value.savePath))
+			}
 		} else {
 			// compare temp with base
 			// if new items found
@@ -302,7 +304,7 @@ func (mf *MonitoredFile) processFile() error {
 			if len(newItems) > 0 {
 				for _, item := range newItems {
 					for _, notifier := range notifiers {
-						notifier.Notify(item)
+						notifier.NotifyItem(item)
 					}
 				}
 			} else {

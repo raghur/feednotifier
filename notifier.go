@@ -10,7 +10,8 @@ import (
 )
 
 type Notifier interface {
-	Notify(item *gofeed.Item)
+	NotifyItem(item *gofeed.Item)
+	Notify(msg string)
 }
 
 type Pushover struct {
@@ -24,8 +25,22 @@ func NewPushover(token, user string) *Pushover {
 	p.user = user
 	return &p
 }
+func (p *Pushover) Notify(msg string) {
+	data := make(url.Values)
+	data["token"] = []string{p.token}
+	data["user"] = []string{p.user}
+	data["title"] = []string{"Feednotifier - message"}
+	data["message"] = []string{msg}
 
-func (p *Pushover) Notify(item *gofeed.Item) {
+	resp, err := http.PostForm("https://api.pushover.net/1/messages.json", data)
+	if err != nil {
+		log.Errorf("Error sending push notification %v", err)
+	}
+	defer resp.Body.Close()
+	responseContent, _ := ioutil.ReadAll(bufio.NewReader(resp.Body))
+	log.Debugf("Pushed %s - response: %s", item.Title, responseContent)
+}
+func (p *Pushover) NotifyItem(item *gofeed.Item) {
 
 	data := make(url.Values)
 	data["token"] = []string{p.token}
