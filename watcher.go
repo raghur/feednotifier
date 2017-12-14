@@ -71,12 +71,19 @@ func (mf *MonitoredFile) initFile() error {
 		return err
 	}
 	log.Debugf("Checking to see if there are any old urls to be cleaned")
+	urlsRemovedNotification := ""
 	for k, v := range mf.urls {
 		if v.added.Before(time) {
 			log.Debugf("Url %s not added now - will be deleted", k)
 			os.Remove(v.savePath)
 			log.Debugf("Removed file: %s", v.savePath)
 			delete(mf.urls, k)
+			urlsRemovedNotification = fmt.Sprintf("%s\nRemoved URL: %s", urlsRemovedNotification, k)
+		}
+	}
+	if urlsRemovedNotification != "" {
+		for _, notifier := range notifiers {
+			notifier.Notify(urlsRemovedNotification)
 		}
 	}
 	log.Debugf("Final list of %d urls to be monitored: %v", len(mf.urls), mf.urls)
