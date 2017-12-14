@@ -38,7 +38,7 @@ func (p *Pushover) Notify(msg string) {
 	}
 	defer resp.Body.Close()
 	responseContent, _ := ioutil.ReadAll(bufio.NewReader(resp.Body))
-	log.Debugf("Pushed %s - response: %s", item.Title, responseContent)
+	log.Debugf("Pushed %s - response: %s", msg, responseContent)
 }
 func (p *Pushover) NotifyItem(item *gofeed.Item) {
 

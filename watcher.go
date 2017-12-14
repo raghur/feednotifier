@@ -56,32 +56,8 @@ func NewMonitoredFile(filename string, interval uint64) *MonitoredFile {
 }
 
 func (mf *MonitoredFile) initFile() error {
-
 	time := time.Now()
-	log.Debug("Loading file: ", mf.filename)
-	file, err := os.Open(mf.filename)
-	defer file.Close()
-
-	if err != nil {
-		log.Errorf("error opening file %v\n", err)
-		return err
-	}
-
-	// Start reading from the file with a reader.
-	reader := bufio.NewReader(file)
-
-	var line string
-	for {
-		line, err = reader.ReadString('\n')
-		if err == io.EOF {
-			log.Infof("Completed reading file %s", mf.filename)
-			break
-		}
-		if err != nil {
-			log.Error("Error reading line from file ", mf.filename)
-			continue
-		}
-		line = strings.Trim(line, " \r\n")
+	err := ReadLines(mf.filename, " \r\n", func(line string) error {
 		if line != "" {
 			url, _ := url.Parse(line)
 			md5hash := md5.Sum([]byte(line))
@@ -89,6 +65,10 @@ func (mf *MonitoredFile) initFile() error {
 			base := filepath.Join(workingDirectory, url.Hostname(), filename)
 			mf.urls[line] = FeedUrl{url: line, savePath: base, added: time}
 		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	log.Debugf("Checking to see if there are any old urls to be cleaned")
 	for k, v := range mf.urls {

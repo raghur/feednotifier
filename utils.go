@@ -10,6 +10,7 @@ import (
 )
 
 func ReadLines(fn string, trimset string, action func(l string) error) error {
+	log.Debug("Loading file: ", fn)
 	file, err := os.Open(fn)
 	if err != nil {
 		log.Errorf("error opening file %v\n", err)
