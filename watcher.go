@@ -227,10 +227,10 @@ func compareFeeds(xslt, base, temp string) ([]*gofeed.Item, error) {
 	err = cmd.Wait()
 	if err != nil {
 		log.Errorf("Error applying xslt: %v\n", err)
+		if string(stderr) != "" {
+			log.Warningf("xsltproc stderr: %s", stderr)
+		}
 		return nil, err
-	}
-	if string(stderr) != "" {
-		log.Warningf("xsltproc stderr: %s", stderr)
 	}
 	feedparser := gofeed.NewParser()
 	feed, err := feedparser.ParseString(string(diff))
