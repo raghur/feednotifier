@@ -222,9 +222,9 @@ func compareFeeds(xslt, base, temp string) ([]*gofeed.Item, error) {
 	cmdStdoutPipe, _ := cmd.StdoutPipe()
 	cmdStdErrPipe, _ := cmd.StderrPipe()
 	cmd.Start()
-	diff, err := ioutil.ReadAll(cmdStdoutPipe)
 	stderr, err := ioutil.ReadAll(cmdStdErrPipe)
-	cmd.Wait()
+	diff, err := ioutil.ReadAll(cmdStdoutPipe)
+	err = cmd.Wait()
 	if err != nil {
 		log.Errorf("Error applying xslt: %v\n", err)
 		return nil, err
