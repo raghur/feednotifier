@@ -17,5 +17,5 @@ func TestSendPush(t *testing.T) {
 	item := feed.Items[0]
 
 	po := NewPushover(tokenParts[0], tokenParts[1])
-	po.Notify(item)
+	po.NotifyItem(item)
 }
