@@ -328,7 +328,7 @@ func copyFile(src, dst string) {
 	}
 	defer from.Close()
 
-	to, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE, 0666)
+	to, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		log.Errorf("Unable to open destination file %s, %v", dst, err)
 	}
