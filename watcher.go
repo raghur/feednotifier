@@ -98,7 +98,9 @@ func (mf *MonitoredFile) Start() {
 	job := func(f *MonitoredFile) {
 		nextRun := time.Now().Add(time.Duration(f.interval) * time.Minute)
 		log.Debug("Starting scheduled run: ")
-		f.processFile()
+		for line, value := range f.urls {
+			processLine(line, value)
+		}
 		log.Debugf("Completed scheduled run: Sleeping for %d minutes.", f.interval)
 		log.Debugf("Next run at %v", nextRun)
 		log.Info("*************************************")
@@ -145,16 +147,7 @@ func (mf *MonitoredFile) Start() {
 		}
 		cleanup()
 	}()
-	// mf.processFile()
 	gocron.Every(mf.interval).Minutes().Do(job, mf)
-}
-
-func (mf *MonitoredFile) Stop() {
-
-}
-
-func (mf *MonitoredFile) Delete() {
-
 }
 
 func downloadFile(line, base string) (tempfn string, err error) {
@@ -311,31 +304,4 @@ func processLine(line string, value FeedUrl) error {
 		}
 	}
 	return nil
-
-}
-func (mf *MonitoredFile) processFile() error {
-	for line, value := range mf.urls {
-		processLine(line, value)
-	}
-	return nil
-}
-
-func copyFile(src, dst string) {
-	from, err := os.Open(src)
-	log.Infof("Copying from src:%s to dest: %s", src, dst)
-	if err != nil {
-		log.Errorf("Unable to open source file %s, %v", src, err)
-	}
-	defer from.Close()
-
-	to, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
-	if err != nil {
-		log.Errorf("Unable to open destination file %s, %v", dst, err)
-	}
-	defer to.Close()
-
-	_, err = io.Copy(to, from)
-	if err != nil {
-		log.Errorf("Error while copying file %s -> %s, %v", src, dst, err)
-	}
 }
