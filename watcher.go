@@ -294,6 +294,7 @@ func processLine(line string, value FeedUrl) error {
 			return nil
 		}
 		if len(newItems) > 0 {
+			log.Infof("Pushing %d new items found in feed %s", len(newItems), line)
 			for _, item := range newItems {
 				for _, notifier := range notifiers {
 					notifier.NotifyItem(item)
