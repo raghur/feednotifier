@@ -1,3 +1,3 @@
 #! /bin/sh
 CGO_ENABLED=0 go build
-docker build -t feednotifier .
+docker build -t rraghur/feednotifier .
