@@ -41,8 +41,11 @@ func cliOptions() *cmdline.CmdLine {
 
 	cmdline := cmdline.New()
 	cmdline.AddOption("w", "workingdir", "dir", "defaults to .feednotifier")
-	usr, _ := user.Current()
-	dir := usr.HomeDir
+	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	usr, err := user.Current()
+	if err == nil {
+		dir = usr.HomeDir
+	}
 	path := filepath.Join(dir, ".feednotifier")
 	cmdline.SetOptionDefault("workingdir", path)
 	cmdline.AddOption("l", "loglevel", "level", "debug, info, warn, error, fatal or panic")
