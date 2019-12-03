@@ -156,7 +156,11 @@ func downloadFile(line, base string) (tempfn string, err error) {
 		log.Errorf("Unable to parse url %v\n", err)
 		return
 	}
-	r, err := http.Get(url.String())
+	// "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:73.0) Gecko/20100101 Firefox/73.0"
+	client := &http.Client{}
+	req, _ := http.NewRequest(http.MethodGet, url.String(), nil)
+	req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:73.0) Gecko/20100101 Firefox/73.0")
+	r, err := client.Do(req)
 	if err != nil {
 		log.Errorf("Error downloading from url: %s, %v\n", url, err)
 		return
@@ -286,7 +290,7 @@ func processLine(line string, value FeedUrl) error {
 		//		send pushes
 		xslt, err := getTransformFile(line)
 		if err != nil {
-
+			log.Errorf("Error trying to get transform file - %v", err)
 		}
 		newItems, err := compareFeeds(xslt, value.savePath, tmpfile)
 		if err != nil {
