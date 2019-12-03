@@ -16,7 +16,9 @@ var notifiers []Notifier
 
 func main() {
 	cmdline := cliOptions()
-	log.Info("Starting process")
+	log.Info("/////////////////////////////////////////////////////////////")
+	log.Info("****************** *Process Started* ************************")
+	log.Info("/////////////////////////////////////////////////////////////")
 	workingDirectory = cmdline.OptionValue("workingdir")
 	pushoverToken := cmdline.OptionValue("token")
 	notifiers = make([]Notifier, 1)
