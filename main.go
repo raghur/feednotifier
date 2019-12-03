@@ -52,15 +52,17 @@ func cliOptions() *cmdline.CmdLine {
 	cmdline.SetOptionDefault("workingdir", path)
 	cmdline.AddOption("l", "loglevel", "level", "debug, info, warn, error, fatal or panic")
 	cmdline.SetOptionDefault("loglevel", "warn")
-	cmdline.AddOption("f", "log-file", "file", "log file")
-	cmdline.SetOptionDefault("log-file", filepath.Join(path, "log.txt"))
+	cmdline.AddOption("f", "log-file", "file", "log file; logs to console if not specified")
 	cmdline.AddOption("t", "token", "pushover token app:user", "pushover token")
 	cmdline.AddOption("i", "interval", "in minutes", "feeds will be checked at every X minutes")
 	cmdline.SetOptionDefault("interval", "30")
 	cmdline.AddTrailingArguments("watchfile", "files to watch and read rss feed urls from")
 	cmdline.Parse(os.Args)
 	levelname := cmdline.OptionValue("loglevel")
-	logfilename := cmdline.OptionValue("log-file")
+	logfilename := ""
+	if cmdline.IsOptionSet("log-file") {
+		logfilename = cmdline.OptionValue("log-file")
+	}
 	initLog(levelname, logfilename)
 	return cmdline
 }
@@ -75,11 +77,15 @@ func initLog(levelname, logfilename string) {
 		log.Panicf("Could not parse log level, exiting %v", e)
 	}
 	log.SetLevel(level)
-	os.MkdirAll(filepath.Dir(logfilename), os.ModePerm)
-	logfile, e := os.OpenFile(logfilename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if e != nil {
-		log.Panicf("Unable to open log file, bailing %v", e)
+	if logfilename != "" {
+		os.MkdirAll(filepath.Dir(logfilename), os.ModePerm)
+		logfile, e := os.OpenFile(logfilename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if e != nil {
+			log.Panicf("Unable to open log file, bailing %v", e)
+		}
+		log.SetOutput(logfile)
+	} else {
+		log.SetOutput(os.Stdout)
 	}
-	log.SetOutput(logfile)
 	log.Info("Log level set to: ", level)
 }
