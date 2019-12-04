@@ -208,7 +208,7 @@ func downloadFile(line, base string) (tempfn string, err error) {
 }
 
 func compareFeeds(xslt, base, temp string) ([]*gofeed.Item, error) {
-	defer os.Remove(temp)
+
 	baseXSLTParam := base
 	if runtime.GOOS == "windows" {
 		// xsltproc idiosyncracy on windows
@@ -222,6 +222,7 @@ func compareFeeds(xslt, base, temp string) ([]*gofeed.Item, error) {
 	stderr, err := ioutil.ReadAll(cmdStdErrPipe)
 	diff, err := ioutil.ReadAll(cmdStdoutPipe)
 	err = cmd.Wait()
+
 	if err != nil {
 		log.Errorf("Error applying xslt: %v\n", err)
 		if string(stderr) != "" {
@@ -230,18 +231,64 @@ func compareFeeds(xslt, base, temp string) ([]*gofeed.Item, error) {
 		return nil, err
 	}
 	feedparser := gofeed.NewParser()
+
 	feed, err := feedparser.ParseString(string(diff))
+
 	if err != nil {
 		log.Errorf("Could not parse feed, %v", err)
 		return nil, err
 	}
-	if len(feed.Items) > 0 {
-		log.Infof("Feed diff has %d new items", len(feed.Items))
-		copyFile(temp, base)
-	}
+
 	return feed.Items, nil
+
 }
 
+func compareFeedsInProc(base, new string) ([]*gofeed.Item, error) {
+	var idlist map[string]*gofeed.Item
+	idlist = make(map[string]*gofeed.Item)
+	fp := gofeed.NewParser()
+
+	fh, err := os.Open(new)
+	if err != nil {
+		log.Errorf("Could not open new file - %s", new)
+		return nil, err
+	}
+	defer fh.Close()
+
+	newFeed, err := fp.Parse(fh)
+	if err != nil {
+		log.Errorf("Could not parse new file - %s, %v", new, err)
+		return nil, err
+	}
+	for _, item := range newFeed.Items {
+		idlist[item.GUID] = item
+	}
+
+	oldfh, err := os.Open(base)
+	if err != nil {
+		log.Errorf("Could not open base file - %s", base)
+		return nil, err
+	}
+	defer oldfh.Close()
+	oldfeed, err := fp.Parse(oldfh)
+	if err != nil {
+		log.Errorf("Could not parse base feed - %s, %v", base, err)
+		return nil, err
+	}
+	for _, item := range oldfeed.Items {
+		if _, found := idlist[item.GUID]; found {
+			delete(idlist, item.GUID)
+		}
+	}
+
+	var itemList []*gofeed.Item
+	itemList = make([]*gofeed.Item, 0, len(idlist))
+	for _, v := range idlist {
+		itemList = append(itemList, v)
+	}
+
+	return itemList, nil
+}
 func getTransformFile(line string) (string, error) {
 	url, err := url.Parse(line)
 	if err != nil {
@@ -289,15 +336,24 @@ func processLine(line string, value FeedUrl) error {
 		// if new items found
 		//		send pushes
 		xslt, err := getTransformFile(line)
+		var newItems []*gofeed.Item
 		if err != nil {
-			log.Errorf("Error trying to get transform file - %v", err)
-		}
-		newItems, err := compareFeeds(xslt, value.savePath, tmpfile)
-		if err != nil {
-			log.Errorf("Error comparing feeds with xslt: %v", err)
-			return nil
+			log.Warnf("Could not get transform file - %v", err)
+			log.Info("Falling back to in proc comparison")
+			newItems, err = compareFeedsInProc(value.savePath, tmpfile)
+		} else {
+			newItems, err = compareFeeds(xslt, value.savePath, tmpfile)
+			if err != nil {
+				log.Warnf("Error comparing feeds with xslt: %s,  %v", xslt, err)
+				log.Info("Falling back to in proc comparison")
+				newItems, err = compareFeedsInProc(value.savePath, tmpfile)
+			}
 		}
 		if len(newItems) > 0 {
+			defer os.Remove(tmpfile)
+			log.Infof("Feed diff has %d new items", len(newItems))
+			copyFile(tmpfile, value.savePath)
+
 			log.Infof("Pushing %d new items found in feed %s", len(newItems), line)
 			for _, item := range newItems {
 				for _, notifier := range notifiers {
