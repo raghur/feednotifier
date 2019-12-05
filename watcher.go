@@ -62,7 +62,7 @@ func (mf *MonitoredFile) initFile() error {
 			url, _ := url.Parse(line)
 			md5hash := md5.Sum([]byte(line))
 			filename := fmt.Sprintf("%x", md5hash)
-			base := filepath.Join(workingDirectory, url.Hostname(), filename)
+			base := filepath.Join(opts.WorkingDir, url.Hostname(), filename)
 			_, exists := mf.urls[line]
 			mf.urls[line] = FeedUrl{url: line, savePath: base, added: time}
 			if !exists {
@@ -86,7 +86,7 @@ func (mf *MonitoredFile) initFile() error {
 		}
 	}
 	if urlsRemovedNotification != "" {
-		for _, notifier := range notifiers {
+		for _, notifier := range opts.notifiers {
 			notifier.Notify(urlsRemovedNotification)
 		}
 	}
@@ -328,7 +328,7 @@ func processLine(line string, value FeedUrl) error {
 	log.Infof("File downloaded %s, %s", value.savePath, tmpfile)
 	if tmpfile == "" {
 		log.Infof("Send push notification to acknowledge new feed url %s", line)
-		for _, notifier := range notifiers {
+		for _, notifier := range opts.notifiers {
 			notifier.Notify(fmt.Sprintf("New url %s monitored. Base file %s", line, value.savePath))
 		}
 	} else {
@@ -356,7 +356,7 @@ func processLine(line string, value FeedUrl) error {
 
 			log.Infof("Pushing %d new items found in feed %s", len(newItems), line)
 			for _, item := range newItems {
-				for _, notifier := range notifiers {
+				for _, notifier := range opts.notifiers {
 					notifier.NotifyItem(item)
 				}
 			}

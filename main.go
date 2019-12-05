@@ -1,79 +1,82 @@
 package main
 
 import (
-	"github.com/galdor/go-cmdline"
-	"github.com/jasonlvhit/gocron"
-	log "github.com/sirupsen/logrus"
+	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
-	"strconv"
 	"strings"
+
+	"github.com/jasonlvhit/gocron"
+	"github.com/jessevdk/go-flags"
+	log "github.com/sirupsen/logrus"
 )
 
-var workingDirectory string
-var notifiers []Notifier
+var opts struct {
+	LogLevel     string   `short:"l" long:"loglevel" default:"info" description:"Set log level" choice:"debug" choice:"info" choice:"warn" choice:"error" choice:"fatal" choice:"panic"`
+	Interval     uint64   `short:"i" long:"interval" default:"30" description:"interval between checks" value-name:"MINUTES"`
+	Logfile      string   `short:"f" long:"log" description:"log file" value-name:"FILE"`
+	Notifier     []string `short:"n" long:"notifier" required:"1" description:"Attach a notifier - format type:value, can be specified multiple times" value-name:"notifierspec"`
+	WorkingDir   string   `short:"w" long:"workingdir" default:"~/.feednotifier" description:"Working directory" value-name:"FOLDER"`
+	WatchedFiles struct {
+		Files []string `required:"yes" description:"Watched file(s) with RSS feeds - one feed per line" positional-arg-name:"FEED-FILE"`
+	} `positional-args:"yes"`
+	notifiers []Notifier
+}
 
 func main() {
-	cmdline := cliOptions()
+	parseOptions()
 	log.Info("/////////////////////////////////////////////////////////////")
 	log.Info("****************** *Process Started* ************************")
 	log.Info("/////////////////////////////////////////////////////////////")
-	workingDirectory = cmdline.OptionValue("workingdir")
-	pushoverToken := cmdline.OptionValue("pushover")
-	notifiers = make([]Notifier, 0, 2)
-	if pushoverToken != "" {
-		tokenArr := strings.Split(pushoverToken, ":")
-		po := NewPushover(tokenArr[0], tokenArr[1])
-		notifiers = append(notifiers, po)
-		log.Debug("added pushover notifier")
-	}
-	telegramToken := cmdline.OptionValue("telegram")
-	if telegramToken != "" {
-		tokenArr := strings.Split(telegramToken, "#")
-		tele := NewTelegramNotifier(tokenArr[0], tokenArr[1])
-		notifiers = append(notifiers, tele)
-		log.Debug("added telegram notifier")
-	}
-	interval, _ := strconv.ParseUint(cmdline.OptionValue("interval"), 10, 64)
-	log.Infof("Feeds will be checked at intervals of %d minutes", interval)
-	files := cmdline.TrailingArgumentsValues("watchfile")
-	log.Debug("watching files: ", files)
-	for _, file := range files {
-		watcher := NewMonitoredFile(file, interval)
+	log.Infof("Feeds will be monitored every: %v mins", opts.Interval)
+	log.Debug("watching files: ", opts.WatchedFiles.Files)
+	for _, file := range opts.WatchedFiles.Files {
+		watcher := NewMonitoredFile(file, opts.Interval)
 		watcher.Start()
 	}
 	<-gocron.Start()
 	log.Info("Completed process")
 }
 
-func cliOptions() *cmdline.CmdLine {
-
-	cmdline := cmdline.New()
-	cmdline.AddOption("w", "workingdir", "dir", "defaults to .feednotifier")
-	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
-	usr, err := user.Current()
-	if err == nil {
-		dir = usr.HomeDir
+func parseOptions() []string {
+	parser := flags.NewParser(&opts, flags.Default)
+	args, err := parser.Parse()
+	if err != nil {
+		if e, ok := err.(*flags.Error); ok {
+			if e.Type != flags.ErrHelp {
+				parser.WriteHelp(os.Stdout)
+			}
+		}
+		os.Exit(1)
 	}
-	path := filepath.Join(dir, ".feednotifier")
-	cmdline.SetOptionDefault("workingdir", path)
-	cmdline.AddOption("l", "loglevel", "level", "debug, info, warn, error, fatal or panic")
-	cmdline.SetOptionDefault("loglevel", "warn")
-	cmdline.AddOption("f", "log-file", "file", "log file; logs to console if not specified")
-	cmdline.AddOption("", "pushover", "pushover token", "pushover token app:user")
-	cmdline.AddOption("", "telegram", "telegram bot and chat token", "telegram token - botid#chatid")
-	cmdline.AddOption("i", "interval", "in minutes", "feeds will be checked at every X minutes")
-	cmdline.SetOptionDefault("interval", "30")
-	cmdline.AddTrailingArguments("watchfile", "files to watch and read rss feed urls from")
-	cmdline.Parse(os.Args)
-	levelname := cmdline.OptionValue("loglevel")
-	logfilename := ""
-	if cmdline.IsOptionSet("log-file") {
-		logfilename = cmdline.OptionValue("log-file")
+	if opts.WorkingDir == "~/.feednotifier" {
+		dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+		usr, err := user.Current()
+		if err == nil {
+			dir = usr.HomeDir
+		}
+		opts.WorkingDir = filepath.Join(dir, ".feednotifier")
 	}
-	initLog(levelname, logfilename)
-	return cmdline
+	initLog(opts.LogLevel, opts.Logfile)
+	for _, no := range opts.Notifier {
+		parts := strings.SplitN(no, ":", 1)
+		if parts == nil {
+			fmt.Printf("Error parsing notifier - %s", no)
+		}
+		opts.notifiers = make([]Notifier, 2)
+		switch parts[0] {
+		case "telegram":
+			tokenArr := strings.Split(parts[1], "#")
+			opts.notifiers = append(opts.notifiers, NewTelegramNotifier(tokenArr[0], tokenArr[1]))
+			break
+		case "pushover":
+			tokenArr := strings.Split(parts[1], ":")
+			po := NewPushover(tokenArr[0], tokenArr[1])
+			opts.notifiers = append(opts.notifiers, po)
+		}
+	}
+	return args
 }
 
 func initLog(levelname, logfilename string) {
