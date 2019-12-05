@@ -20,12 +20,20 @@ func main() {
 	log.Info("****************** *Process Started* ************************")
 	log.Info("/////////////////////////////////////////////////////////////")
 	workingDirectory = cmdline.OptionValue("workingdir")
-	pushoverToken := cmdline.OptionValue("token")
-	notifiers = make([]Notifier, 1)
+	pushoverToken := cmdline.OptionValue("pushover")
+	notifiers = make([]Notifier, 0, 2)
 	if pushoverToken != "" {
 		tokenArr := strings.Split(pushoverToken, ":")
 		po := NewPushover(tokenArr[0], tokenArr[1])
-		notifiers[0] = po
+		notifiers = append(notifiers, po)
+		log.Debug("added pushover notifier")
+	}
+	telegramToken := cmdline.OptionValue("telegram")
+	if telegramToken != "" {
+		tokenArr := strings.Split(telegramToken, "#")
+		tele := NewTelegramNotifier(tokenArr[0], tokenArr[1])
+		notifiers = append(notifiers, tele)
+		log.Debug("added telegram notifier")
 	}
 	interval, _ := strconv.ParseUint(cmdline.OptionValue("interval"), 10, 64)
 	log.Infof("Feeds will be checked at intervals of %d minutes", interval)
@@ -53,7 +61,8 @@ func cliOptions() *cmdline.CmdLine {
 	cmdline.AddOption("l", "loglevel", "level", "debug, info, warn, error, fatal or panic")
 	cmdline.SetOptionDefault("loglevel", "warn")
 	cmdline.AddOption("f", "log-file", "file", "log file; logs to console if not specified")
-	cmdline.AddOption("t", "token", "pushover token app:user", "pushover token")
+	cmdline.AddOption("", "pushover", "pushover token", "pushover token app:user")
+	cmdline.AddOption("", "telegram", "telegram bot and chat token", "telegram token - botid#chatid")
 	cmdline.AddOption("i", "interval", "in minutes", "feeds will be checked at every X minutes")
 	cmdline.SetOptionDefault("interval", "30")
 	cmdline.AddTrailingArguments("watchfile", "files to watch and read rss feed urls from")
