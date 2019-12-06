@@ -17,3 +17,5 @@ require (
 	golang.org/x/text v0.3.2 // indirect
 	gopkg.in/yaml.v2 v2.2.4 // indirect
 )
+
+replace github.com/jessevdk/go-flags v1.4.0 => github.com/raghur/go-flags v1.4.1-0.20191206043915-de746e6c69fd
