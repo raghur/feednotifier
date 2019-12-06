@@ -17,6 +17,7 @@ var opts struct {
 	Logfile      string   `short:"f" long:"log" description:"log file" value-name:"FILE"`
 	Notifier     []string `short:"n" long:"notifier" required:"1" description:"Attach a notifier - format type:value, can be specified multiple times" value-name:"notifierspec"`
 	WorkingDir   string   `short:"w" long:"workingdir" default:"~/.feednotifier" description:"Working directory" value-name:"FOLDER"`
+	Templates    []string `short:"t" long:"template" description:"Go template file for message rendering; multiple; Use domain name as template name to override default template" value-name:"TEMPLATE"`
 	WatchedFiles struct {
 		Files []string `required:"yes" description:"Watched file(s) with RSS feeds - one feed per line" positional-arg-name:"FEED-FILE"`
 	} `positional-args:"yes"`
@@ -69,6 +70,7 @@ func parseOptions() []string {
 		os.Exit(1)
 	}
 	initLog(opts.LogLevel, opts.Logfile)
+	parseCustomTemplates(opts.Templates)
 	if opts.WorkingDir == "~/.feednotifier" {
 		dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 		usr, err := user.Current()

@@ -16,14 +16,32 @@ import (
 
 var mdTmpl *template.Template
 
+const defaultTemplate = "__message"
+
 func init() {
-	mdTmpl, _ = template.New("message").Parse(`
-	Reddit Message from *{{.Author.Name}}* to [{{.Title}}]({{.Link}})
-`)
+	mdTmpl, _ = template.New(defaultTemplate).Parse(`
+		Message: [{{.Title}}]({{.Link}})
+		`)
+}
+
+func parseCustomTemplates(templates []string) {
+	log.Debugf("Parsing custom templates, %v", templates)
+	if len(templates) > 0 {
+		custom, err := template.ParseFiles(templates...)
+		if err != nil {
+			log.Warnf("Error loading templates from files - %v", err)
+			log.Warnf("Will use default template for all notifications")
+			return
+		}
+
+		mdTmpl, _ = custom.AddParseTree(defaultTemplate, mdTmpl.Tree)
+		log.Info(mdTmpl.DefinedTemplates())
+		return
+	}
 }
 
 type Notifier interface {
-	NotifyItem(item *gofeed.Item)
+	NotifyItem(furl string, item *gofeed.Item)
 	Notify(msg string)
 }
 
@@ -57,7 +75,7 @@ func (p *Pushover) Notify(msg string) {
 	responseContent, _ := ioutil.ReadAll(bufio.NewReader(resp.Body))
 	log.Debugf("Pushed %s - response: %s", msg, responseContent)
 }
-func (p *Pushover) NotifyItem(item *gofeed.Item) {
+func (p *Pushover) NotifyItem(furl string, item *gofeed.Item) {
 
 	data := make(url.Values)
 	data["token"] = []string{p.token}
@@ -65,7 +83,7 @@ func (p *Pushover) NotifyItem(item *gofeed.Item) {
 	data["title"] = []string{item.Title}
 	data["url"] = []string{item.Link}
 	data["url_title"] = []string{"Add this torrent"}
-	data["message"] = []string{item.Description}
+	data["message"] = []string{renderItem(furl, item)}
 
 	resp, err := http.PostForm("https://api.pushover.net/1/messages.json", data)
 	if err != nil {
@@ -108,13 +126,12 @@ func (p *TelegramNotifier) Notify(msg string) {
 	log.Debugf("Pushed %s - response: %s", msg, responseContent)
 }
 
-func (p *TelegramNotifier) NotifyItem(item *gofeed.Item) {
+func (p *TelegramNotifier) NotifyItem(furl string, item *gofeed.Item) {
 
 	data := make(url.Values)
 	data["chat_id"] = []string{p.chatId}
-	buf := bytes.NewBufferString("")
-	mdTmpl.Execute(buf, item)
-	data["text"] = []string{buf.String()}
+	renderItem(furl, item)
+	data["text"] = []string{renderItem(furl, item)}
 	data["parse_mode"] = []string{"markdown"}
 	//log.Debugf("Item:  %v", item)
 	url := strings.Replace("https://api.telegram.org/bot{}/sendMessage", "{}", p.botId, -1)
@@ -126,4 +143,19 @@ func (p *TelegramNotifier) NotifyItem(item *gofeed.Item) {
 	responseContent, _ := ioutil.ReadAll(bufio.NewReader(resp.Body))
 	log.Debugf("Pushed feed item- response: %s", responseContent)
 
+}
+
+func renderItem(furl string, item *gofeed.Item) string {
+	u, _ := url.Parse(furl)
+	templateName := u.Hostname()
+	if t := mdTmpl.Lookup(templateName); t == nil {
+		templateName = defaultTemplate
+	}
+	buf := bytes.NewBufferString("")
+	err := mdTmpl.ExecuteTemplate(buf, templateName, item)
+	if err != nil {
+		mdTmpl.ExecuteTemplate(buf, defaultTemplate, item)
+		return fmt.Sprintf("There was an error rendering message content - %v. Message is rendered with default template below: \n%s", err, buf.String())
+	}
+	return buf.String()
 }
