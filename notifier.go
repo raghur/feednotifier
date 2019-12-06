@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -36,6 +37,9 @@ func NewPushover(token, user string) *Pushover {
 	p.token = token
 	p.user = user
 	return &p
+}
+func (p Pushover) String() string {
+	return fmt.Sprintf("[PUSHOVER: %s]", p.user)
 }
 
 func (p *Pushover) Notify(msg string) {
@@ -75,6 +79,10 @@ func (p *Pushover) NotifyItem(item *gofeed.Item) {
 type TelegramNotifier struct {
 	botId  string
 	chatId string
+}
+
+func (p *TelegramNotifier) String() string {
+	return fmt.Sprintf("[TELEGRAM:%s]", p.botId)
 }
 
 func NewTelegramNotifier(botid, chatid string) *TelegramNotifier {

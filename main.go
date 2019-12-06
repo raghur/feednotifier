@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -29,18 +28,37 @@ func main() {
 	log.Info("/////////////////////////////////////////////////////////////")
 	log.Info("****************** *Process Started* ************************")
 	log.Info("/////////////////////////////////////////////////////////////")
-	log.Infof("Feeds will be monitored every: %v mins", opts.Interval)
-	log.Debug("watching files: ", opts.WatchedFiles.Files)
+	log.Debugf("Feeds will be monitored every: %v mins", opts.Interval)
+	log.Debugf("New items will be published to: %v", opts.notifiers)
+	log.Debugf("watching files: %v", opts.WatchedFiles.Files)
 	for _, file := range opts.WatchedFiles.Files {
 		watcher := NewMonitoredFile(file, opts.Interval)
 		watcher.Start()
 	}
 	<-gocron.Start()
-	log.Info("Completed process")
+	log.Debugf("Completed process")
 }
 
+func parseIniIfFound(parser *flags.Parser) {
+	iniParser := flags.NewIniParser(parser)
+	iniParser.ParseAsDefaults = false
+	usr, err := user.Current()
+	if err == nil {
+		dir := usr.HomeDir
+		file := filepath.Join(dir, ".feednotifier", "feednotifier.ini")
+		if err := iniParser.ParseFile(file); err != nil {
+			log.Debugf("Error reading ini file - %v", err)
+			if !os.IsNotExist(err) {
+				log.Fatalf("Error reading ini file - %s, %v", file, err)
+			}
+			return
+		}
+		log.Debugf("Read options from ini file - %s", file)
+	}
+}
 func parseOptions() []string {
 	parser := flags.NewParser(&opts, flags.Default)
+	parseIniIfFound(parser)
 	args, err := parser.Parse()
 	if err != nil {
 		if e, ok := err.(*flags.Error); ok {
@@ -50,6 +68,7 @@ func parseOptions() []string {
 		}
 		os.Exit(1)
 	}
+	initLog(opts.LogLevel, opts.Logfile)
 	if opts.WorkingDir == "~/.feednotifier" {
 		dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 		usr, err := user.Current()
@@ -58,17 +77,19 @@ func parseOptions() []string {
 		}
 		opts.WorkingDir = filepath.Join(dir, ".feednotifier")
 	}
-	initLog(opts.LogLevel, opts.Logfile)
+	// log.Debugf("Now parsing notifiers %v", len(opts.Notifier))
+	opts.notifiers = make([]Notifier, 0, 5)
 	for _, no := range opts.Notifier {
-		parts := strings.SplitN(no, ":", 1)
+		parts := strings.SplitN(no, ":", 2)
 		if parts == nil {
-			fmt.Printf("Error parsing notifier - %s", no)
+			log.Fatalf("Error parsing notifier spec - %s", no)
+			os.Exit(1)
 		}
-		opts.notifiers = make([]Notifier, 2)
 		switch parts[0] {
 		case "telegram":
 			tokenArr := strings.Split(parts[1], "#")
-			opts.notifiers = append(opts.notifiers, NewTelegramNotifier(tokenArr[0], tokenArr[1]))
+			tele := NewTelegramNotifier(tokenArr[0], tokenArr[1])
+			opts.notifiers = append(opts.notifiers, tele)
 			break
 		case "pushover":
 			tokenArr := strings.Split(parts[1], ":")
