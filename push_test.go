@@ -17,5 +17,5 @@ func TestSendPush(t *testing.T) {
 	item := feed.Items[0]
 
 	po := NewPushover(tokenParts[0], tokenParts[1])
-	po.NotifyItem(item)
+	po.NotifyItem("www.somewhere.com/invalid/url", item)
 }
