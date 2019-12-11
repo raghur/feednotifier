@@ -1,5 +1,6 @@
 package main
 
+//go:generate fileb0x b0x.toml
 import (
 	"os"
 	"path/filepath"
@@ -25,6 +26,9 @@ var opts struct {
 	notifiers []Notifier
 }
 
+func init() {
+	log.SetLevel(log.DebugLevel)
+}
 func main() {
 	parseOptions()
 	log.Info("/////////////////////////////////////////////////////////////")
@@ -42,7 +46,7 @@ func main() {
 }
 
 func parseIniIfFound(file string, parser *flags.Parser) {
-	log.Infof("parsing ini file %s", file)
+	log.Debugf("parsing ini file %s", file)
 	iniParser := flags.NewIniParser(parser)
 	iniParser.ParseAsDefaults = false
 	path, _ := homedir.Expand(file)

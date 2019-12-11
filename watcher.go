@@ -4,10 +4,6 @@ import (
 	"bufio"
 	"crypto/md5"
 	"fmt"
-	"github.com/fsnotify/fsnotify"
-	"github.com/jasonlvhit/gocron"
-	"github.com/mmcdole/gofeed"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -18,7 +14,18 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/jasonlvhit/gocron"
+	"github.com/mmcdole/gofeed"
+	"github.com/raghur/feednotifier/static"
+	log "github.com/sirupsen/logrus"
 )
+
+func init() {
+	xslts, _ := static.WalkDirs("assets/xslt", false)
+	log.Debugf("In built xslt transforms: %v", xslts)
+}
 
 type ratelimitError struct {
 	retryDuration time.Duration
@@ -294,6 +301,11 @@ func getTransformFile(line string) (string, error) {
 	if err != nil {
 		log.Errorf("Unable to parse url %v\n", err)
 		return "", err
+	}
+	fs := static.FS
+	staticAsset := filepath.Join("assets", "xslt", url.Hostname()+".xslt")
+	if _, err := fs.Stat(static.CTX, staticAsset); os.IsNotExist(err) {
+		log.Debugf("transform file not available in embedded resource path: %s", staticAsset)
 	}
 	exePath, _ := os.Executable()
 	exeFolder := filepath.Dir(exePath)

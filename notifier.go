@@ -11,6 +11,7 @@ import (
 	"text/template"
 
 	"github.com/mmcdole/gofeed"
+	"github.com/raghur/feednotifier/static"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,14 +20,19 @@ var mdTmpl *template.Template
 const defaultTemplate = "__message"
 
 func init() {
-	mdTmpl, _ = template.New(defaultTemplate).Parse(`
+	defaultTmpl, _ := template.New(defaultTemplate).Parse(`
 		Message: [{{.Title}}]({{.Link}})
 		`)
+	text, _ := static.ReadFile("assets/default.tmpl")
+	s := string(text)
+	mdTmpl, _ = template.New("embedded").Parse(s)
+	mdTmpl.AddParseTree(defaultTemplate, defaultTmpl.Tree)
+	log.Debugf("Default templates loaded are: %s", mdTmpl.DefinedTemplates())
 }
 
 func parseCustomTemplates(templates []string) {
-	log.Debugf("Parsing custom templates, %v", templates)
 	if len(templates) > 0 {
+		log.Debugf("Parsing custom templates, %v", templates)
 		custom, err := template.ParseFiles(templates...)
 		if err != nil {
 			log.Warnf("Error loading templates from files - %v", err)
