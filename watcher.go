@@ -1,4 +1,4 @@
-package main
+package feednotifier
 
 import (
 	"bufio"
@@ -22,9 +22,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func init() {
+var didInitXslts bool
+
+func initXslt() {
+	if didInitXslts {
+		return
+	}
 	xslts, _ := static.WalkDirs("assets/xslt", false)
 	log.Debugf("In built xslt transforms: %v", xslts)
+	didInitXslts = true
 }
 
 type ratelimitError struct {
@@ -46,19 +52,24 @@ func (f FeedUrl) String() string {
 }
 
 type MonitoredFile struct {
-	filename string
-	urls     map[string]FeedUrl
-	interval uint64
-	watcher  *fsnotify.Watcher
+	filename  string
+	urls      map[string]FeedUrl
+	interval  uint64
+	watcher   *fsnotify.Watcher
+	notifiers *[]Notifier
+	basedir   string
 }
 
-func NewMonitoredFile(filename string, interval uint64) *MonitoredFile {
+func NewMonitoredFile(filename string, interval uint64, notifiers *[]Notifier, basedir string) *MonitoredFile {
 	var mf MonitoredFile
 	mf.filename = filename
 	mf.interval = interval
 	mf.urls = make(map[string]FeedUrl)
+	mf.notifiers = notifiers
 	mf.watcher, _ = fsnotify.NewWatcher()
+	mf.basedir = basedir
 	mf.initFile()
+	initXslt()
 	return &mf
 }
 
@@ -69,11 +80,11 @@ func (mf *MonitoredFile) initFile() error {
 			url, _ := url.Parse(line)
 			md5hash := md5.Sum([]byte(line))
 			filename := fmt.Sprintf("%x", md5hash)
-			base := filepath.Join(opts.WorkingDir, url.Hostname(), filename)
+			base := filepath.Join(mf.basedir, url.Hostname(), filename)
 			_, exists := mf.urls[line]
 			mf.urls[line] = FeedUrl{url: line, savePath: base, added: time}
 			if !exists {
-				processLine(line, mf.urls[line])
+				processLine(line, mf.urls[line], *mf.notifiers)
 			}
 		}
 		return nil
@@ -93,7 +104,7 @@ func (mf *MonitoredFile) initFile() error {
 		}
 	}
 	if urlsRemovedNotification != "" {
-		for _, notifier := range opts.notifiers {
+		for _, notifier := range *mf.notifiers {
 			notifier.Notify(urlsRemovedNotification)
 		}
 	}
@@ -106,7 +117,7 @@ func (mf *MonitoredFile) Start() {
 		nextRun := time.Now().Add(time.Duration(f.interval) * time.Minute)
 		log.Debug("Starting scheduled run: ")
 		for line, value := range f.urls {
-			processLine(line, value)
+			processLine(line, value, *mf.notifiers)
 		}
 		log.Debugf("Completed scheduled run: Sleeping for %d minutes.", f.interval)
 		log.Debugf("Next run at %v", nextRun)
@@ -316,7 +327,7 @@ func getTransformFile(line string) (string, error) {
 	return xsltPath, nil
 }
 
-func processLine(line string, value FeedUrl) error {
+func processLine(line string, value FeedUrl, notifiers []Notifier) error {
 	success := false
 	retries := 0
 	var tmpfile string
@@ -340,7 +351,7 @@ func processLine(line string, value FeedUrl) error {
 	log.Infof("File downloaded %s, %s", value.savePath, tmpfile)
 	if tmpfile == "" {
 		log.Infof("Send push notification to acknowledge new feed url %s", line)
-		for _, notifier := range opts.notifiers {
+		for _, notifier := range notifiers {
 			notifier.Notify(fmt.Sprintf("New url %s monitored. Base file %s", line, value.savePath))
 		}
 	} else {
@@ -368,7 +379,7 @@ func processLine(line string, value FeedUrl) error {
 
 			log.Infof("Pushing %d new items found in feed %s", len(newItems), line)
 			for _, item := range newItems {
-				for _, notifier := range opts.notifiers {
+				for _, notifier := range notifiers {
 					notifier.NotifyItem(line, item)
 				}
 			}

@@ -1,4 +1,4 @@
-package main
+package feednotifier
 
 import (
 	"github.com/mmcdole/gofeed"
@@ -16,6 +16,6 @@ func TestSendPush(t *testing.T) {
 	feed, _ := fp.Parse(file)
 	item := feed.Items[0]
 
-	po := NewPushover(tokenParts[0], tokenParts[1])
+	po := newPushover(tokenParts[0], tokenParts[1])
 	po.NotifyItem("www.somewhere.com/invalid/url", item)
 }

@@ -4,11 +4,11 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/jasonlvhit/gocron"
 	"github.com/jessevdk/go-flags"
 	"github.com/mitchellh/go-homedir"
+	"github.com/raghur/feednotifier"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -23,12 +23,9 @@ var opts struct {
 	WatchedFiles struct {
 		Files []string `required:"yes" description:"Watched file(s) with RSS feeds - one feed per line" positional-arg-name:"FEED-FILE"`
 	} `positional-args:"yes"`
-	notifiers []Notifier
+	notifiers []feednotifier.Notifier
 }
 
-func init() {
-	log.SetLevel(log.DebugLevel)
-}
 func main() {
 	parseOptions()
 	log.Info("/////////////////////////////////////////////////////////////")
@@ -38,7 +35,7 @@ func main() {
 	log.Debugf("New items will be published to: %v", opts.notifiers)
 	log.Debugf("watching files: %v", opts.WatchedFiles.Files)
 	for _, file := range opts.WatchedFiles.Files {
-		watcher := NewMonitoredFile(file, opts.Interval)
+		watcher := feednotifier.NewMonitoredFile(file, opts.Interval, &opts.notifiers, opts.WorkingDir)
 		watcher.Start()
 	}
 	<-gocron.Start()
@@ -74,28 +71,17 @@ func parseOptions() []string {
 		os.Exit(1)
 	}
 	initLog(opts.LogLevel, opts.Logfile)
-	parseCustomTemplates(opts.Templates)
+	feednotifier.ParseCustomTemplates(opts.Templates)
 	opts.WorkingDir, _ = homedir.Expand(opts.WorkingDir)
 	log.Debugf("Working directory: %s", opts.WorkingDir)
 	// log.Debugf("Now parsing notifiers %v", len(opts.Notifier))
-	opts.notifiers = make([]Notifier, 0, 5)
+	opts.notifiers = make([]feednotifier.Notifier, 0, 5)
 	for _, no := range opts.Notifier {
-		parts := strings.SplitN(no, ":", 2)
-		if parts == nil {
-			log.Fatalf("Error parsing notifier spec - %s", no)
-			os.Exit(1)
+		notifier, err := feednotifier.CreateNotifier(no)
+		if err != nil {
+			log.Fatalf("Error parsing notifier - %v", err)
 		}
-		switch parts[0] {
-		case "telegram":
-			tokenArr := strings.Split(parts[1], "#")
-			tele := NewTelegramNotifier(tokenArr[0], tokenArr[1])
-			opts.notifiers = append(opts.notifiers, tele)
-			break
-		case "pushover":
-			tokenArr := strings.Split(parts[1], ":")
-			po := NewPushover(tokenArr[0], tokenArr[1])
-			opts.notifiers = append(opts.notifiers, po)
-		}
+		opts.notifiers = append(opts.notifiers, notifier)
 	}
 	return args
 }

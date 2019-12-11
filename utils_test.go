@@ -1,4 +1,4 @@
-package main
+package feednotifier
 
 import "testing"
 

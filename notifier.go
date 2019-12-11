@@ -1,4 +1,4 @@
-package main
+package feednotifier
 
 import (
 	"bufio"
@@ -16,10 +16,14 @@ import (
 )
 
 var mdTmpl *template.Template
+var didInitTemplates bool
 
 const defaultTemplate = "__message"
 
-func init() {
+func initTemplates() {
+	if didInitTemplates {
+		return
+	}
 	defaultTmpl, _ := template.New(defaultTemplate).Parse(`
 		Message: [{{.Title}}]({{.Link}})
 		`)
@@ -28,9 +32,11 @@ func init() {
 	mdTmpl, _ = template.New("embedded").Parse(s)
 	mdTmpl.AddParseTree(defaultTemplate, defaultTmpl.Tree)
 	log.Debugf("Default templates loaded are: %s", mdTmpl.DefinedTemplates())
+	didInitTemplates = true
 }
 
-func parseCustomTemplates(templates []string) {
+func ParseCustomTemplates(templates []string) {
+	initTemplates()
 	if len(templates) > 0 {
 		log.Debugf("Parsing custom templates, %v", templates)
 		custom, err := template.ParseFiles(templates...)
@@ -46,27 +52,29 @@ func parseCustomTemplates(templates []string) {
 	}
 }
 
+/* Notifier ...
+ */
 type Notifier interface {
 	NotifyItem(furl string, item *gofeed.Item)
 	Notify(msg string)
 }
 
-type Pushover struct {
+type pushover struct {
 	token string
 	user  string
 }
 
-func NewPushover(token, user string) *Pushover {
-	var p Pushover
+func newPushover(token, user string) *pushover {
+	var p pushover
 	p.token = token
 	p.user = user
 	return &p
 }
-func (p Pushover) String() string {
+func (p pushover) String() string {
 	return fmt.Sprintf("[PUSHOVER: %s]", p.user)
 }
 
-func (p *Pushover) Notify(msg string) {
+func (p *pushover) Notify(msg string) {
 	data := make(url.Values)
 	data["token"] = []string{p.token}
 	data["user"] = []string{p.user}
@@ -81,7 +89,7 @@ func (p *Pushover) Notify(msg string) {
 	responseContent, _ := ioutil.ReadAll(bufio.NewReader(resp.Body))
 	log.Debugf("Pushed %s - response: %s", msg, responseContent)
 }
-func (p *Pushover) NotifyItem(furl string, item *gofeed.Item) {
+func (p *pushover) NotifyItem(furl string, item *gofeed.Item) {
 
 	data := make(url.Values)
 	data["token"] = []string{p.token}
@@ -100,23 +108,23 @@ func (p *Pushover) NotifyItem(furl string, item *gofeed.Item) {
 	log.Debugf("Pushed %s - response: %s", item.Title, responseContent)
 }
 
-type TelegramNotifier struct {
+type telegramNotifier struct {
 	botId  string
 	chatId string
 }
 
-func (p *TelegramNotifier) String() string {
+func (p *telegramNotifier) String() string {
 	return fmt.Sprintf("[TELEGRAM:%s]", p.botId)
 }
 
-func NewTelegramNotifier(botid, chatid string) *TelegramNotifier {
-	var p TelegramNotifier
+func newTelegramNotifier(botid, chatid string) *telegramNotifier {
+	var p telegramNotifier
 	p.botId = botid
 	p.chatId = chatid
 	return &p
 }
 
-func (p *TelegramNotifier) Notify(msg string) {
+func (p *telegramNotifier) Notify(msg string) {
 	data := make(url.Values)
 	data["chat_id"] = []string{p.chatId}
 	data["text"] = []string{msg}
@@ -132,7 +140,7 @@ func (p *TelegramNotifier) Notify(msg string) {
 	log.Debugf("Pushed %s - response: %s", msg, responseContent)
 }
 
-func (p *TelegramNotifier) NotifyItem(furl string, item *gofeed.Item) {
+func (p *telegramNotifier) NotifyItem(furl string, item *gofeed.Item) {
 
 	data := make(url.Values)
 	data["chat_id"] = []string{p.chatId}
@@ -164,4 +172,23 @@ func renderItem(furl string, item *gofeed.Item) string {
 		return fmt.Sprintf("There was an error rendering message content - %v. Message is rendered with default template below: \n%s", err, buf.String())
 	}
 	return buf.String()
+}
+
+func CreateNotifier(spec string) (Notifier, error) {
+	initTemplates() // in case parse custom templates was never called? stinks.
+	parts := strings.SplitN(spec, ":", 2)
+	if parts == nil {
+		return nil, fmt.Errorf("Error parsing notifier spec - %s", spec)
+	}
+	switch parts[0] {
+	case "telegram":
+		tokenArr := strings.Split(parts[1], "#")
+		tele := newTelegramNotifier(tokenArr[0], tokenArr[1])
+		return tele, nil
+	case "pushover":
+		tokenArr := strings.Split(parts[1], ":")
+		po := newPushover(tokenArr[0], tokenArr[1])
+		return po, nil
+	}
+	return nil, fmt.Errorf("Unknown spec format - %s", spec)
 }

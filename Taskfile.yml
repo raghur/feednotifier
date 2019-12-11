@@ -1,0 +1,14 @@
+version: '2'
+
+tasks:
+  build:
+    cmds:
+      - go generate
+      - go build -o feednotifier cmd/*
+  default:
+    deps: [test]
+    cmds:
+      - task: build
+  test:
+    cmds:
+      - go test
