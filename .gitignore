@@ -1,4 +1,4 @@
 vendor/
 *.exe
-feednotifier
+feednotifier*
 static/
