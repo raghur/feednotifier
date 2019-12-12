@@ -13,27 +13,28 @@ import (
 )
 
 var opts struct {
-	Config       func(string) `short:"c" long:"config" description:"ini formatted config file" default:"~/.feednotifier/feednotifier.ini" value-name:"CONFIG"`
-	LogLevel     string       `short:"l" long:"loglevel" default:"info" description:"Set log level" choice:"debug" choice:"info" choice:"warn" choice:"error" choice:"fatal" choice:"panic"`
-	Interval     uint64       `short:"i" long:"interval" default:"30" description:"interval between checks" value-name:"MINUTES"`
-	Logfile      string       `short:"f" long:"log" description:"log file" value-name:"FILE"`
-	Notifier     []string     `short:"n" long:"notifier" required:"1" description:"Attach a notifier - format type:value, can be specified multiple times" value-name:"notifierspec"`
-	WorkingDir   string       `short:"w" long:"workingdir" default:"~/.feednotifier" description:"Working directory" value-name:"FOLDER"`
-	Templates    []string     `short:"t" long:"template" description:"Go template file for message rendering; multiple; Use domain name as template name to override default template" value-name:"TEMPLATE"`
+	LogLevel     string   `short:"l" long:"loglevel" default:"info" description:"Set log level" choice:"debug" choice:"info" choice:"warn" choice:"error" choice:"fatal" choice:"panic"`
+	Interval     uint64   `short:"i" long:"interval" default:"30" description:"interval between checks" value-name:"MINUTES"`
+	Logfile      string   `short:"f" long:"log" description:"log file" value-name:"FILE"`
+	Notifier     []string `short:"n" long:"notifier" required:"1" description:"Attach a notifier - format type:value, can be specified multiple times" value-name:"notifierspec"`
+	WorkingDir   string   `short:"w" long:"workingdir" default:"~/.feednotifier" description:"Working directory" value-name:"FOLDER"`
+	Templates    []string `short:"t" long:"template" description:"Go template file for message rendering; multiple; Use domain name as template name to override default template" value-name:"TEMPLATE"`
 	WatchedFiles struct {
 		Files []string `required:"yes" description:"Watched file(s) with RSS feeds - one feed per line" positional-arg-name:"FEED-FILE"`
 	} `positional-args:"yes"`
 	notifiers []feednotifier.Notifier
+	// Make sure to keep this as the last option - ordering of fields in this struct matters.
+	Config func(string) `short:"c" long:"config" description:"ini formatted config file" default:"~/.feednotifier/feednotifier.ini" value-name:"CONFIG"`
 }
 
 func main() {
-	parseOptions()
+	parseOptions(os.Args[1:])
 	log.Info("/////////////////////////////////////////////////////////////")
 	log.Info("****************** *Process Started* ************************")
 	log.Info("/////////////////////////////////////////////////////////////")
-	log.Debugf("Feeds will be monitored every: %v mins", opts.Interval)
-	log.Debugf("New items will be published to: %v", opts.notifiers)
-	log.Debugf("watching files: %v", opts.WatchedFiles.Files)
+	log.Infof("Feeds will be monitored every: %v mins", opts.Interval)
+	log.Infof("New items will be published to: %v", opts.notifiers)
+	log.Infof("watching files: %v", opts.WatchedFiles.Files)
 	for _, file := range opts.WatchedFiles.Files {
 		watcher := feednotifier.NewMonitoredFile(file, opts.Interval, &opts.notifiers, opts.WorkingDir)
 		watcher.Start()
@@ -43,12 +44,12 @@ func main() {
 }
 
 func parseIniIfFound(file string, parser *flags.Parser) {
-	log.Debugf("parsing ini file %s", file)
+	log.Debugf("Start parsing ini file %s", file)
 	iniParser := flags.NewIniParser(parser)
-	iniParser.ParseAsDefaults = false
+	iniParser.ParseAsDefaults = true
 	path, _ := homedir.Expand(file)
 	if err := iniParser.ParseFile(path); err != nil {
-		log.Debugf("Error reading ini file - %v", err)
+		log.Errorf("Error reading ini file - %v", err)
 		if !os.IsNotExist(err) {
 			log.Fatalf("Error reading ini file - %s, %v", path, err)
 		}
@@ -56,12 +57,13 @@ func parseIniIfFound(file string, parser *flags.Parser) {
 	}
 	log.Infof("Read options from ini file - %s", path)
 }
-func parseOptions() []string {
+
+func parseOptions(args []string) []string {
 	parser := flags.NewParser(&opts, flags.Default)
-	opts.Config = func(config string) {
-		parseIniIfFound(config, parser)
+	opts.Config = func(file string) {
+		parseIniIfFound(file, parser)
 	}
-	args, err := parser.Parse()
+	args, err := parser.ParseArgs(args)
 	if err != nil {
 		if e, ok := err.(*flags.Error); ok {
 			if e.Type != flags.ErrHelp {

@@ -1,21 +1,24 @@
 package feednotifier
 
 import (
-	"github.com/mmcdole/gofeed"
 	"os"
-	"strings"
 	"testing"
+
+	"github.com/mmcdole/gofeed"
 )
 
 func TestSendPush(t *testing.T) {
-	pushoverToken := "abc:def"
-	tokenParts := strings.Split(pushoverToken, ":")
+	pushoverToken := "pushover:abc:def"
 	file, _ := os.Open("test/third.xml")
 	defer file.Close()
 	fp := gofeed.NewParser()
 	feed, _ := fp.Parse(file)
 	item := feed.Items[0]
 
-	po := newPushover(tokenParts[0], tokenParts[1])
+	po, e := CreateNotifier(pushoverToken)
+	if e != nil {
+		t.Errorf("Unexpected error parsing token - %s", pushoverToken)
+		t.Fail()
+	}
 	po.NotifyItem("www.somewhere.com/invalid/url", item)
 }

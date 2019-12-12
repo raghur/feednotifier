@@ -26,12 +26,12 @@ func TestFsNotifyDir(t *testing.T) {
 		for {
 			select {
 			case event := <-watcher.Events:
-				log.Println("event:", event)
+				t.Log("event:", event)
 				if event.Op&fsnotify.Write == fsnotify.Write {
-					log.Println("modified file:", event.Name)
+					t.Log("modified file:", event.Name)
 				}
 			case err := <-watcher.Errors:
-				log.Println("error:", err)
+				t.Log("error:", err)
 			}
 		}
 	}()

@@ -1,10 +1,10 @@
 package feednotifier
 
 import (
-	"fmt"
-	"github.com/mmcdole/gofeed"
 	"os"
 	"testing"
+
+	"github.com/mmcdole/gofeed"
 )
 
 func TestFeedParseBasic(t *testing.T) {
@@ -13,20 +13,20 @@ func TestFeedParseBasic(t *testing.T) {
 	fp := gofeed.NewParser()
 	feed, e := fp.Parse(file)
 	if e != nil {
-		fmt.Println(e)
+		t.Log(e)
 		os.Exit(1)
 	}
-	fmt.Println(feed.Title)
+	t.Log(feed.Title)
 	for _, e := range feed.Items {
-		fmt.Println(e.Title)
-		fmt.Println(e.Description)
-		fmt.Println(e.GUID)
-		fmt.Println(e.Link)
-		fmt.Println(e.Published)
-		// fmt.Println(e.PublishedParsed)
-		fmt.Println(e.Content)
+		t.Log(e.Title)
+		t.Log(e.Description)
+		t.Log(e.GUID)
+		t.Log(e.Link)
+		t.Log(e.Published)
+		// t.Log(e.PublishedParsed)
+		t.Log(e.Content)
 		for k, v := range e.Custom {
-			fmt.Println(k, v)
+			t.Log(k, v)
 		}
 	}
 }
@@ -37,25 +37,25 @@ func TestFeedParseZooqle(t *testing.T) {
 	fp := gofeed.NewParser()
 	feed, e := fp.Parse(file)
 	if e != nil {
-		fmt.Println(e)
+		t.Log(e)
 		os.Exit(1)
 	}
-	fmt.Println(feed.Title)
+	t.Log(feed.Title)
 	for _, e := range feed.Items {
-		fmt.Println(e.Title)
-		fmt.Println(e.Description)
-		fmt.Println(e.GUID)
-		fmt.Println(e.Link)
-		fmt.Println(e.Published)
-		// fmt.Println(e.PublishedParsed)
-		fmt.Println(e.Content)
+		t.Log(e.Title)
+		t.Log(e.Description)
+		t.Log(e.GUID)
+		t.Log(e.Link)
+		t.Log(e.Published)
+		// t.Log(e.PublishedParsed)
+		t.Log(e.Content)
 		for k, v := range e.Custom {
-			fmt.Println(k, v)
+			t.Log(k, v)
 		}
 		for k, v := range e.Extensions {
-			fmt.Printf("%s => %v\n", k, v)
+			t.Logf("%s => %v\n", k, v)
 			for k2, v2 := range v {
-				fmt.Printf("%s => %v\n", k2, v2[0].Value)
+				t.Logf("%s => %v\n", k2, v2[0].Value)
 			}
 		}
 	}
