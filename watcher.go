@@ -1,5 +1,6 @@
 package feednotifier
 
+//go:generate fileb0x b0x.toml
 import (
 	"bufio"
 	"crypto/md5"

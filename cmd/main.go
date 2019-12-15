@@ -1,6 +1,5 @@
 package main
 
-//go:generate fileb0x b0x.toml
 import (
 	"os"
 	"path/filepath"
